@@ -1,0 +1,422 @@
+"""
+defines high level functions to manipulate the data
+
+there is a one to one corrispondance between api functions and cli options
+"""
+
+from pathlib import Path
+from typing import Any
+from subprocess import run
+from datetime import datetime
+import logging
+import tempfile
+
+from sqlalchemy.orm import Session, joinedload, aliased
+from sqlalchemy import select, Engine, inspect
+import nrrd
+import numpy as np
+
+from .segment_neuropil import make_neuropil_mask, default_args_make_neuropil_mask
+from .read_raw_data import read_czi, read_test
+from .sql_classes import (
+    Channel,
+    ChannelMetadata,
+    AnalysisStep,
+    Base,
+    RawFile,
+    GlobalConfig,
+    Image,
+)
+from .sql_utils import (
+    get_imgs,
+    get_path,
+    perform_analysis_step,
+    check_progress,
+    validate_db,
+    save_channel_to_disk,
+    get_mask_template_path,
+)
+from .execptions import NoRawData, InvalidStepError, BadInputImages
+from .utils import (
+    write_nhdrs,
+    validate_channels,
+    get_db_path,
+    get_logfile_path,
+    get_init_xform,
+    get_cmtk_executable,
+    run_with_logging,
+    FlipLiteral,
+)
+
+logger = logging.getLogger()
+
+# from template6alh.segment_neuropil import make_neuropil_mask, default_args_make_neuropil_mask
+# from template6alh.sql_classes import Image, GlobalConfig, Channel
+
+
+def get_paths(session: Session, db_path: Path | None) -> dict[str, Path]:
+    """
+    gets relivent paths
+    """
+    if db_path is None:
+        db_path = get_db_path()
+    out_dict = {"database path": db_path, "logfile path": get_logfile_path()}
+    assert session.bind is not None
+    if GlobalConfig.__tablename__ in inspect(session.bind).get_table_names():
+        config = session.execute(
+            select(GlobalConfig).where(GlobalConfig.key == "prefix_dir")
+        ).scalar_one()
+        out_dict["Data cache prefix"] = Path(config.value)
+    return out_dict
+
+
+def init(
+    engine: Engine,
+    raw_data: list[Path],
+    root_dir: Path,
+    neuropil_chan: int | None,
+    fasii_chan: int | None,
+    eve_chan: int | None,
+):
+    """
+    reads the raw files caching each channel as an nrrd and writes a db for all
+    of the raw files, adding raw_files, images, channels, global config
+
+    raises NoRawData, ChannelValidationError
+    """
+    validate_channels([neuropil_chan, fasii_chan, eve_chan])
+    root_dir.mkdir(exist_ok=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        gc = GlobalConfig(key="prefix_dir", value=str(root_dir))
+        session.add(gc)
+        add_more_raw(
+            session=session,
+            raw_data=raw_data,
+            neuropil_chan=neuropil_chan,
+            fasii_chan=fasii_chan,
+            eve_chan=eve_chan,
+        )
+        session.commit()
+        if session.query(RawFile).count() == 0:
+            raise NoRawData(raw_data)
+
+
+def add_more_raw(
+    session: Session,
+    raw_data: list[Path],
+    neuropil_chan: int | None,
+    fasii_chan: int | None,
+    eve_chan: int | None,
+):
+    """
+    adds more images from more raw data files
+
+
+    raises NoRawData, ChannelValidationError
+    """
+    validate_db(session)
+    validate_channels([neuropil_chan, fasii_chan, eve_chan])
+    for path in raw_data:
+        if path.suffix == ".czi":
+            reader = read_czi(path)
+        elif path == Path("test"):
+            reader = read_test(path)
+        else:
+            logger.warning("Failed to read %s", path)
+            continue
+        rf = RawFile()
+        rf.path = str(path)
+        rf.neuropil_chan = neuropil_chan
+        rf.fasii_chan = fasii_chan
+        rf.eve_chan = eve_chan
+        session.add(rf)
+        for metadata, image_array in reader:
+            logger.info("read file from %s", path)
+            image = Image(folder="", progress=0, raw_file=rf)
+            # fix folder name
+            session.add(image)
+            session.flush()
+            assert image.id is not None
+            image.folder = f"{image.id:03d}"
+            get_path(session, image).mkdir(parents=True, exist_ok=True)
+            for i, channel_array in enumerate(image_array, 1):
+                channel = Channel()
+                channel.path = f"chan{i}.nrrd"
+                channel.step_number = 0
+                channel.channel_type = "raw"
+                channel.number = i
+                channel.scalex = metadata["X"]
+                channel.scaley = metadata["Y"]
+                channel.scalez = metadata["Z"]
+                channel.image = image
+                session.add(channel)
+                save_channel_to_disk(session, channel, channel_array)
+    session.commit()
+
+
+def segment_neuropil(
+    session: Session,
+    image_paths: list[str] | None,
+    new_scale: float | None,
+    filter_sigma: float | None,
+    opening_size: float | None,
+):
+    """
+    segments the neuropil all of the images with the ids
+
+    new_scale: float: the output scale in um. Default is 1. negative numbers
+        are interpreted as no new scale
+    filter_sigma: float, a sigma for a noise removal filter: default .1 um
+    opening_size: float, the size where smaller objects will be removed. default 1um
+
+    Raises
+        BadImageFolder
+        BadInputImages
+        SkippingStep
+    """
+    validate_db(session)
+    kwargs: dict["str", Any] = {
+        "new_scale": (
+            new_scale
+            if new_scale is not None
+            else default_args_make_neuropil_mask["new_scale"]
+        ),
+        "filter_sigma": (
+            filter_sigma
+            if filter_sigma is not None
+            else default_args_make_neuropil_mask["filter_sigma"]
+        ),
+        "opening_size": (
+            opening_size
+            if opening_size is not None
+            else default_args_make_neuropil_mask["opening_size"]
+        ),
+    }
+    if kwargs["new_scale"] < 0:
+        kwargs["new_scale"] = None
+    images = get_imgs(session, image_paths)
+    for image in images:
+        neuropil_chan_number = image.raw_file.neuropil_chan
+        assert neuropil_chan_number is not None
+        select_raw_channel = (
+            select(Channel)
+            .where(Channel.image_id == image.id)
+            .where(Channel.number == neuropil_chan_number)
+            .where(Channel.channel_type == "raw")
+        )
+        raw_channel = session.execute(select_raw_channel).scalar_one()
+        _ = check_progress(session, [raw_channel], 1)
+        in_data, _ = nrrd.read(str(get_path(session, raw_channel)))
+        old_scale = (raw_channel.scalez, raw_channel.scaley, raw_channel.scalex)
+        out_data = make_neuropil_mask(in_data, old_scale, **kwargs)
+        if kwargs["new_scale"] is None:
+            out_scale = old_scale
+        else:
+            out_scale = tuple([kwargs["new_scale"]] * 3)
+        # write out data
+        output_chan_dicts: list[tuple[Channel, dict]] = []
+        for flip in (a + b + c for a in "01" for b in "01" for c in "01"):
+            flip_sign = [-1 if a == "1" else 1 for a in flip]
+            spacings = np.array(out_scale) * flip_sign
+            header = {
+                "encoding": "raw",
+                "labels": ["Z", "Y", "X"],
+                "space": "RAS",
+                "sample units": ("micron", "micron", "micron"),
+                "space directions": np.diag(spacings),
+            }
+            channel = Channel()
+            channel.path = f"neuropil_mask_{flip}.nhdr"
+            channel.channel_type = "mask"
+            channel.scalez = spacings[0]
+            channel.scaley = spacings[1]
+            channel.scalex = spacings[2]
+            channel.mdata = [ChannelMetadata(key="flip", value=flip)]
+            output_chan_dicts.append((channel, header))
+            # end iterate flip
+        perform_analysis_step(
+            session,
+            AnalysisStep(
+                function="make-neuropil-mask",
+                kwargs=repr(kwargs),
+                runtime=datetime.now(),
+            ),
+            [raw_channel],
+            [cd[0] for cd in output_chan_dicts],
+            1,
+        )
+        # write out all of the channels
+        header_dict: dict[str, dict] = {}
+        for chan, header in output_chan_dicts:
+            assert chan.id is not None
+            header_dict[chan.path] = header
+        write_nhdrs(header_dict, out_data, get_path(session, image))
+        session.commit()
+
+
+def clean(session: Session):
+    """
+    removes all files from database which are no longer on the disk
+    """
+    validate_db(session)
+    channels = (
+        session.execute(select(Channel).options(joinedload(Channel.image)))
+        .scalars()
+        .all()
+    )
+    for channel in channels:
+        if get_path(session, channel).exists():
+            continue
+        for cm in channel.mdata:
+            session.delete(cm)
+        session.delete(channel)
+    session.commit()
+
+
+#TODO allow kwargs
+def mask_affine(session: Session, image_paths: list[str] | None):
+    """
+    alignes all of the templates masks
+    """
+    validate_db(session)
+    template_path = get_mask_template_path(session)
+    images = get_imgs(session, image_paths)
+    channels_flips: list[tuple[Channel, FlipLiteral]] = []
+    for image in images:
+        # if image.progress < 1:
+        # raise SkippingStep(3, image.progress)
+        channels_cmetadata = session.execute(
+            select(Channel, ChannelMetadata)
+            .join(ChannelMetadata, Channel.mdata)
+            .join(AnalysisStep, Channel.producer)
+            .join(Image, Channel.image)
+            .filter(Image.id == image.id)
+            .filter(AnalysisStep.function == "make-neuropil-mask")
+            .filter(ChannelMetadata.key == "flip")
+            .order_by(AnalysisStep.runtime.desc())
+        ).all()
+        # get flips
+        visteded_flips: set[str] = set()
+        for channel, chan_mdata in channels_cmetadata:
+            if chan_mdata.value in visteded_flips:
+                continue
+            visteded_flips.add(chan_mdata.value)
+            channels_flips.append((channel, chan_mdata.value))
+    assert len(set(channels_flips)) == len(channels_flips)
+    # allert to errors first
+    for channel, _ in channels_flips:
+        _ = check_progress(session, [channel], 2)
+    image_map_reformated: dict[Image, list[Channel]] = {i: [] for i in images}
+    for channel, flip in channels_flips:
+        # get no_flip channel:
+        sister_channels = channel.producer.output_channels
+        no_flip_channels = [
+            c
+            for c in sister_channels
+            if "000" == next(m.value for m in c.mdata if m.key == "flip")
+        ]
+        input_path = get_path(session, channel)
+        if len(no_flip_channels) != 1:
+            raise InvalidStepError(f"cannot find zero flip for {input_path}")
+        # figure out inital xform
+        analysis_step = AnalysisStep()
+        analysis_step.function = "mask-affine"
+        analysis_step.kwargs = "{}"
+        analysis_step.runtime = datetime.now()
+        affine_xform_chan = Channel()
+        affine_xform_chan.path = f"affine_{flip}.xform"
+        affine_xform_chan.channel_type = "xform"
+        affine_xform_chan.mdata = [ChannelMetadata(key="flip", value=flip)]
+        affine_aligned_chan = Channel()
+        affine_aligned_chan.path = f"reformat_{flip}.nrrd"
+        affine_aligned_chan.channel_type = "mask"
+        affine_aligned_chan.mdata = [ChannelMetadata(key="flip", value=flip)]
+        perform_analysis_step(
+            session,
+            analysis_step,
+            [channel],
+            [affine_xform_chan, affine_aligned_chan],
+            2,
+            copy_scale=True,
+        )
+        with tempfile.TemporaryDirectory() as folder_str:
+            folder = Path(folder_str)
+            unfliped_path = get_path(session, no_flip_channels[0])
+            affine_xform_path = get_path(session, affine_xform_chan)
+            init_xform_path = folder / "init.xform"
+            run_with_logging(
+                (
+                    get_cmtk_executable("make_initial_affine"),
+                    "--centers-of-mass",
+                    template_path,
+                    input_path,
+                    init_xform_path,
+                )
+            )
+            run_with_logging(
+                (
+                    get_cmtk_executable("registration"),
+                    "--initial",
+                    init_xform_path,
+                    "--dofs",
+                    "6,9",
+                    "--auto-multi-levels",
+                    "2",
+                    "-a",
+                    "0.5",
+                    "-o",
+                    affine_xform_path,
+                    template_path,
+                    unfliped_path,
+                )
+            )
+        # Now register all images using affine
+        run_with_logging(
+            (
+                "reformatx",
+                "-o",
+                get_path(session, affine_aligned_chan),
+                "--nn",
+                "--floating",
+                unfliped_path,
+                template_path,
+                affine_xform_path,
+            )
+        )
+        image_map_reformated[affine_aligned_chan.image].append(affine_aligned_chan)
+    # evaluate xform quality
+    template, _ = nrrd.read(str(template_path))
+    template_mask = template == 254
+    max_score = 2 * template_mask.sum()
+    for image, channels in image_map_reformated.items():
+        channel_score: list[tuple[Channel, float]] = []
+        for channel in channels:
+            reformated, _ = nrrd.read(str(get_path(session, channel)))
+            sum_template_covered = (reformated[template_mask] > 0).sum()
+            sum_reformat_covered = (template[reformated > 0] > 128).sum()
+            assert not np.isnan(sum_reformat_covered)
+            assert not np.isnan(sum_template_covered)
+            channel.mdata.append(
+                ChannelMetadata(key="template-covered", value=str(sum_template_covered))
+            )
+            channel.mdata.append(
+                ChannelMetadata(key="reformat-covered", value=str(sum_reformat_covered))
+            )
+            score = (sum_template_covered + sum_reformat_covered) / max_score
+            channel.mdata.append(ChannelMetadata(key="score", value=str(score)))
+            channel_score.append((channel, score))
+        channel_score.sort(key=lambda e: e[1], reverse=True)
+        channel_score_repr = repr({c.path: s for c, s in channel_score})
+        logger.debug(f"scores are {channel_score_repr} ")
+        if channel_score[1][1] * 1.2 > channel_score[0][1]:
+            logger.warning(
+                f"Second best flip ({channel_score_repr[1]}) is "
+                f"quite close to best ({channel_score_repr[0]}) "
+            )
+        for i, (channel, _) in enumerate(channel_score):
+            if i == 0:
+                channel.mdata.append(ChannelMetadata(key="best-flip", value="yes"))
+            else:
+                channel.mdata.append(ChannelMetadata(key="best-flip", value="no"))
+    session.commit()

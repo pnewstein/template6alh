@@ -1,0 +1,32 @@
+[build-system]
+requires = [
+    "setuptools>=42",
+    "wheel"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "template6alh"
+version = "0.0.1"
+description = "Tools for making template brains"
+authors = [
+    { name = "Peter Newstein", email = "peternewstein@gmail.com" }
+]
+license = { text = "GPL" }
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent"
+]
+
+[project.urls]
+repository = "https://github.com/pnewstein/template6alh"
+
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[project.scripts]
+t6alh = "template6alh.cli:main"
