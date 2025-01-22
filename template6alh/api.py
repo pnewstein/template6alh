@@ -6,12 +6,11 @@ there is a one to one corrispondance between api functions and cli options
 
 from pathlib import Path
 from typing import Any
-from subprocess import run
 from datetime import datetime
 import logging
 import tempfile
 
-from sqlalchemy.orm import Session, joinedload, aliased
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, Engine, inspect
 import nrrd
 import numpy as np
@@ -36,13 +35,12 @@ from .sql_utils import (
     save_channel_to_disk,
     get_mask_template_path,
 )
-from .execptions import NoRawData, InvalidStepError, BadInputImages
+from .execptions import NoRawData, InvalidStepError
 from .utils import (
     write_nhdrs,
     validate_channels,
     get_db_path,
     get_logfile_path,
-    get_init_xform,
     get_cmtk_executable,
     run_with_logging,
     FlipLiteral,
@@ -50,8 +48,6 @@ from .utils import (
 
 logger = logging.getLogger()
 
-# from template6alh.segment_neuropil import make_neuropil_mask, default_args_make_neuropil_mask
-# from template6alh.sql_classes import Image, GlobalConfig, Channel
 
 
 def get_paths(session: Session, db_path: Path | None) -> dict[str, Path]:
@@ -215,25 +211,17 @@ def segment_neuropil(
         else:
             out_scale = tuple([kwargs["new_scale"]] * 3)
         # write out data
-        output_chan_dicts: list[tuple[Channel, dict]] = []
+        output_chan_datas: list[tuple[Channel, np.ndarray]] = []
         for flip in (a + b + c for a in "01" for b in "01" for c in "01"):
-            flip_sign = [-1 if a == "1" else 1 for a in flip]
-            spacings = np.array(out_scale) * flip_sign
-            header = {
-                "encoding": "raw",
-                "labels": ["Z", "Y", "X"],
-                "space": "RAS",
-                "sample units": ("micron", "micron", "micron"),
-                "space directions": np.diag(spacings),
-            }
+            flip_axs = tuple(i for i, zero_one in enumerate(flip) if zero_one == "1")
             channel = Channel()
-            channel.path = f"neuropil_mask_{flip}.nhdr"
+            channel.path = f"neuropil_mask_{flip}.nrrd"
             channel.channel_type = "mask"
-            channel.scalez = spacings[0]
-            channel.scaley = spacings[1]
-            channel.scalex = spacings[2]
+            channel.scalez = out_scale[0]
+            channel.scaley = out_scale[1]
+            channel.scalex = out_scale[2]
             channel.mdata = [ChannelMetadata(key="flip", value=flip)]
-            output_chan_dicts.append((channel, header))
+            output_chan_datas.append((channel, np.flip(out_data, flip_axs)))
             # end iterate flip
         perform_analysis_step(
             session,
@@ -243,15 +231,14 @@ def segment_neuropil(
                 runtime=datetime.now(),
             ),
             [raw_channel],
-            [cd[0] for cd in output_chan_dicts],
+            [cd[0] for cd in output_chan_datas],
             1,
         )
         # write out all of the channels
         header_dict: dict[str, dict] = {}
-        for chan, header in output_chan_dicts:
+        for chan, data in output_chan_datas:
             assert chan.id is not None
-            header_dict[chan.path] = header
-        write_nhdrs(header_dict, out_data, get_path(session, image))
+            save_channel_to_disk(session, chan, data)
         session.commit()
 
 
@@ -363,8 +350,8 @@ def mask_affine(session: Session, image_paths: list[str] | None):
                     "6,9",
                     "--auto-multi-levels",
                     "2",
-                    "-a",
-                    "0.5",
+                    # "-a",
+                    # "0.5",
                     "-o",
                     affine_xform_path,
                     template_path,
@@ -407,12 +394,12 @@ def mask_affine(session: Session, image_paths: list[str] | None):
             channel.mdata.append(ChannelMetadata(key="score", value=str(score)))
             channel_score.append((channel, score))
         channel_score.sort(key=lambda e: e[1], reverse=True)
-        channel_score_repr = repr({c.path: s for c, s in channel_score})
+        channel_score_repr = [(c.path, s) for c, s in channel_score]
         logger.debug(f"scores are {channel_score_repr} ")
         if channel_score[1][1] * 1.2 > channel_score[0][1]:
             logger.warning(
-                f"Second best flip ({channel_score_repr[1]}) is "
-                f"quite close to best ({channel_score_repr[0]}) "
+                f"Second best flip ({channel_score_repr[1][0]}) is "
+                f"quite close to best ({channel_score_repr[0][0]}) "
             )
         for i, (channel, _) in enumerate(channel_score):
             if i == 0:

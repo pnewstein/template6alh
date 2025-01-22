@@ -25,7 +25,7 @@ logger.setLevel("DEBUG")
 header = dict(
     [
         ("space", "right-anterior-superior"),
-        ("space directions", [[0.5, 0.0, 0.0], [0.0, 0.5, 0.0], [0.0, 0.0, 0.5]]),
+        ("space directions", [[2, 0.0, 0.0], [0.0, 2, 0.0], [0.0, 0.0, 2]]),
         ("labels", ["x", "y", "z"]),
     ]
 )
@@ -65,10 +65,9 @@ def check_add_more_raw(session: Session, root_dir: Path):
 def check_segment_neuropil(session: Session, root_dir: Path):
     images = session.execute(select(sc.Image)).scalars().all()
     assert len(images) != 0
-    api.segment_neuropil(session, ["001"], None, None, None)
+    api.segment_neuropil(session, ["001"], 2.0, None, None)
     img_path = root_dir / "001"
-    assert len(list(img_path.glob("*.raw"))) == 1
-    assert len(list(img_path.glob("*.nhdr"))) == 8
+    assert len(list(img_path.glob("*neuropil_mask_*.nrrd"))) == 8
     metadatas = (
         session.execute(
             select(sc.ChannelMetadata).where(sc.ChannelMetadata.key == "flip")
@@ -77,18 +76,16 @@ def check_segment_neuropil(session: Session, root_dir: Path):
         .all()
     )
     assert len(metadatas) == 8
+    unfliped_channel = next(m.channel for m in metadatas if m.value=="000")
+    total_flipped_channel = next(m.channel for m in metadatas if m.value=="111")
+    unflipped_data, _ = nrrd.read(str(get_path(session, unfliped_channel)))
+    total_flipped_data, _ = nrrd.read(str(get_path(session, total_flipped_channel)))
+    assert np.array_equal(unflipped_data, np.flip(total_flipped_data, (0, 1, 2)))
+
     for md in metadatas:
         _, metadata = nrrd.read(str(get_path(session, md.channel)))
         spacings = np.diag(metadata["space directions"])
-        assert np.array_equal(np.abs(spacings), [0.5, 0.5, 0.5])
-        # all metadataa spacings are -1 where flip is 1
-        assert np.all(
-            spacings[np.array([int(v) for v in md.value], dtype=bool)] == -0.5
-        )
-        # all metadataa spacings are 1 where flip is 0
-        assert np.all(
-            spacings[~np.array([int(v) for v in md.value], dtype=bool)] == 0.5
-        )
+        assert np.array_equal(np.abs(spacings), [2, 2, 2])
 
 
 def check_clean(session: Session, root_dir: Path):
@@ -144,13 +141,11 @@ def check_align_masks(session: Session, root_dir: Path):
     assert "neuropil_mask_000" in b[2].path
     assert "affine" in b[1].path
     bad_00 = session.execute(
-        select(sc.Channel).join(sc.ChannelMetadata, sc.Channel.mdata)
-        .filter(
-            sc.ChannelMetadata.key == "best-flip", sc.ChannelMetadata.value == "no"
-        )
+        select(sc.Channel)
+        .join(sc.ChannelMetadata, sc.Channel.mdata)
+        .filter(sc.ChannelMetadata.key == "best-flip", sc.ChannelMetadata.value == "no")
     ).all()
     assert len(bad_00) == 7
-    assert False
 
 
 def test_api():
@@ -201,7 +196,7 @@ def check_groupwise_template(session: Session, root_dir: Path):
     nrrd.write(
         file=str(template_path), data=random_data.astype(np.float32), header=header
     )
-    template_creation.iterative_mask_template(session, root_dir, False)
+    template_creation.iterative_mask_template(session, make_template=False)
     data, _ = nrrd.read(str(template_path))
     assert data.max() == 254
     assert data.dtype == np.uint8

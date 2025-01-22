@@ -228,37 +228,3 @@ def image_folders_from_file(
     return Path(image_folders_file).read_text().split()
 
 
-def get_init_xform(flip_image: Path, template: Path, flip: FlipLiteral, init_xform_path: Path):
-    """
-    uses cmtk to figure out the inital xform path that flips the no_flip_image
-    the correct way and centers it relative to template
-    """
-    header = nrrd.read_header(str(flip_image))
-    if not "spacings" in header:
-        data, header = nrrd.read(str(flip_image))
-        flip_image = init_xform_path.parent / "image.nrrd"
-        header["spacings"] = np.diag(header["space directions"])
-        del header["space directions"]
-        nrrd.write(str(flip_image), data, header=header, compression_level=1)
-
-    translate_affine_path = init_xform_path.parent / "xlate.xform"
-    flip_xform = init_xform_path.parent / "flip.xform"
-    flip_xform.write_text(get_flip_xform(flip))
-    run_with_logging(
-        (
-            get_cmtk_executable("make_initial_affine"),
-            "--centers-of-mass",
-            template,
-            flip_image,
-            translate_affine_path,
-        )
-    )
-    run_with_logging(
-        (
-            get_cmtk_executable("concat_affine"),
-            "--outfile",
-            init_xform_path,
-            translate_affine_path,
-            flip_xform,
-        )
-    )
