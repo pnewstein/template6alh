@@ -46,5 +46,6 @@ class ChannelValidationError(InvalidStepError):
 class UninitializedDatabase(InvalidStepError):
     pass
 
+
 class CannotFindTemplate(InvalidStepError):
     pass

@@ -225,6 +225,7 @@ def clean(ctx: click.Context):
             click.echo(e)
             sys.exit(1)
 
+
 @main.command(
     help="""
     Alignes mask to template mask with affine xform and selects the best flip
@@ -253,6 +254,7 @@ def mask_affine(
         except InvalidStepError as e:
             click.echo(e)
             sys.exit(1)
+
 
 def validate_flip(ctx, param, value):
     _ = ctx, param

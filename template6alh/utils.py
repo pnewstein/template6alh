@@ -43,6 +43,7 @@ affine_xform {{
     center 0 0 0
 }}"""
 
+
 def run_with_logging(args: Sequence[str | Path]):
     logger.info(" ".join(str(a) for a in args))
     output = run(args, capture_output=True)
@@ -53,6 +54,7 @@ def run_with_logging(args: Sequence[str | Path]):
     if std_out:
         logger.info(std_out)
     output.check_returncode()
+
 
 def get_flip_xform(flip: FlipLiteral) -> str:
     format = {k: -1 if v == "1" else 1 for v, k in zip(flip, "zyx")}
@@ -226,5 +228,3 @@ def image_folders_from_file(
         )
         sys.exit(2)
     return Path(image_folders_file).read_text().split()
-
-

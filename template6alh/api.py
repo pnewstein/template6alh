@@ -49,7 +49,6 @@ from .utils import (
 logger = logging.getLogger()
 
 
-
 def get_paths(session: Session, db_path: Path | None) -> dict[str, Path]:
     """
     gets relivent paths
@@ -261,7 +260,7 @@ def clean(session: Session):
     session.commit()
 
 
-#TODO allow kwargs
+# TODO allow kwargs
 def mask_affine(session: Session, image_paths: list[str] | None):
     """
     alignes all of the templates masks

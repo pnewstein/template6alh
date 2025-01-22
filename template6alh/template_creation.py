@@ -15,11 +15,15 @@ import nrrd
 
 from .sql_classes import Channel, Image, AnalysisStep, ChannelMetadata, GlobalConfig
 from .execptions import InvalidStepError, BadImageFolder
-from .sql_utils import perform_analysis_step, get_path, save_channel_to_disk, validate_db
+from .sql_utils import (
+    perform_analysis_step,
+    get_path,
+    save_channel_to_disk,
+    validate_db,
+)
 from .utils import get_cmtk_executable, FlipLiteral
 
 logger = getLogger("template6alh")
-
 
 
 def select_images(session: Session, image_paths: list[str] | None, flip: FlipLiteral):

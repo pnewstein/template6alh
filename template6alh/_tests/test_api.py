@@ -76,8 +76,8 @@ def check_segment_neuropil(session: Session, root_dir: Path):
         .all()
     )
     assert len(metadatas) == 8
-    unfliped_channel = next(m.channel for m in metadatas if m.value=="000")
-    total_flipped_channel = next(m.channel for m in metadatas if m.value=="111")
+    unfliped_channel = next(m.channel for m in metadatas if m.value == "000")
+    total_flipped_channel = next(m.channel for m in metadatas if m.value == "111")
     unflipped_data, _ = nrrd.read(str(get_path(session, unfliped_channel)))
     total_flipped_data, _ = nrrd.read(str(get_path(session, total_flipped_channel)))
     assert np.array_equal(unflipped_data, np.flip(total_flipped_data, (0, 1, 2)))
@@ -187,7 +187,6 @@ def check_select_images(session: Session, root_dir: Path):
 
 
 def check_groupwise_template(session: Session, root_dir: Path):
-
     template_path = root_dir / "template/mask_template.nrrd"
     template_path.parent.mkdir(exist_ok=True)
     random_data = binary_blobs(

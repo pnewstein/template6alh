@@ -20,7 +20,7 @@ from .execptions import (
     BadInputImages,
     SkippingStep,
     UninitializedDatabase,
-    CannotFindTemplate
+    CannotFindTemplate,
 )
 
 logger = logging.getLogger("template6alh")
@@ -111,7 +111,6 @@ def get_imgs(session: Session, image_ids: list[str] | None) -> Sequence[Image]:
             except NoResultFound as e:
                 raise BadImageFolder(image_id) from e
     return images
-
 
 
 def get_path(session: Session, record: Channel | Image | None) -> Path:
@@ -244,6 +243,7 @@ def save_channel_to_disk(session: Session, channel: Channel, data: np.ndarray):
         compression_level=2,
     )
 
+
 def get_mask_template_path(session: Session) -> Path:
     """
     gets the path to the mask_template
@@ -262,4 +262,3 @@ def get_mask_template_path(session: Session) -> Path:
     if not template_path.exists():
         raise CannotFindTemplate()
     return template_path
-

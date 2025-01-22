@@ -13,4 +13,3 @@ for name, eg_path in eg_ob.items():
         continue
     out_dict[name] = real_path
 Path("myconfig.py").write_text(json.dumps(out_dict, indent="\t"))
-
