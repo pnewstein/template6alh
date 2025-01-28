@@ -6,15 +6,16 @@ from pathlib import Path
 import json
 import sys
 from typing import get_args
+import nrrd
 
 import click
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import NoResultFound
 
 from . import api, template_creation
 from .logger import logger
-from .execptions import InvalidStepError, UninitializedDatabase
+from .execptions import InvalidStepError
 from .utils import get_engine_with_context, image_folders_from_file
+from .matplotlib_slice import get_slicer
 
 
 @click.group()
@@ -256,12 +257,28 @@ def mask_affine(
             sys.exit(1)
 
 
-def validate_flip(ctx, param, value):
-    _ = ctx, param
-    valid_flips = get_args(template_creation.FlipLiteral)
-    if value not in valid_flips:
-        raise click.BadParameter(f"Should be one of {repr(valid_flips)}")
-    return value
+
+
+@main.command(
+    help="""
+    visualize nrrd files
+"""
+)
+@click.argument("images", type=click.Path(exists=True, dir_okay=False), nargs=-1)
+def view(
+    images: list[str],
+):
+    slicers = []
+    for image in images:
+        image_path = Path(image)
+        if image_path.suffix not in (".nrrd", ".nhdr"):
+            click.echo(f"{image_path} is not an nrrd", err=True)
+            continue
+        data, _ = nrrd.read(image)
+        slicers.append(get_slicer(data, image))
+    click.confirm("Close all windows?")
+    for slicer in slicers:
+        slicer.quit()
 
 
 @main.group(help="Commands for creating a template image")
@@ -269,6 +286,12 @@ def validate_flip(ctx, param, value):
 def template(ctx: click.Context):
     pass
 
+def validate_flip(ctx, param, value):
+    _ = ctx, param
+    valid_flips = get_args(template_creation.FlipLiteral)
+    if value not in valid_flips:
+        raise click.BadParameter(f"Should be one of {repr(valid_flips)}")
+    return value
 
 @template.command(
     help="""
