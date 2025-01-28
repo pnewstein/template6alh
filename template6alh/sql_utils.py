@@ -137,7 +137,7 @@ def get_path(session: Session, record: Channel | Image | None) -> Path:
 
 def check_progress(
     session: Session,
-    input_channels: list[Channel],
+    input_channels: Sequence[Channel],
     current_step: int,
 ) -> Literal["redoing", "ok"]:
     """

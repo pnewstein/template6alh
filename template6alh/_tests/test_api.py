@@ -148,6 +148,21 @@ def check_align_masks(session: Session, root_dir: Path):
     assert len(bad_00) == 7
 
 
+def check_align_to_mask(session: Session, root_dir):
+    api.align_to_mask(session, ["002"])
+    (warped,) = (root_dir / "002").glob("*warp_mask.xform")
+    ((_, chan),) = session.execute(
+        select(sc.AnalysisStep, sc.Channel)
+        .join(sc.Channel, sc.AnalysisStep.output_channels)
+        .filter(sc.AnalysisStep.function == "align-to-mask")
+    ).all()
+    assert isinstance(chan, sc.Channel)
+    assert chan.image.folder == "002"
+    assert chan.channel_type == "xform"
+    assert warped.exists()
+
+
+
 def test_api():
     with tempfile.TemporaryDirectory() as folder_str:
         folder = Path(folder_str)
@@ -170,6 +185,7 @@ def test_api():
                 header=header,
             )
             check_align_masks(session, root_dir)
+            check_align_to_mask(session, root_dir)
 
 
 def check_select_images(session: Session, root_dir: Path):
@@ -231,3 +247,5 @@ def test_template():
             api.segment_neuropil(session, ["001"], None, None, None)
             check_select_images(session, root_dir)
             check_groupwise_template(session, root_dir)
+            api.mask_affine(session, None)
+            api.align_to_mask(session, None)

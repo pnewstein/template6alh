@@ -10,7 +10,7 @@ from datetime import datetime
 import logging
 import tempfile
 
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, aliased
 from sqlalchemy import select, Engine, inspect
 import nrrd
 import numpy as np
@@ -37,7 +37,6 @@ from .sql_utils import (
 )
 from .execptions import NoRawData, InvalidStepError
 from .utils import (
-    write_nhdrs,
     validate_channels,
     get_db_path,
     get_logfile_path,
@@ -234,7 +233,6 @@ def segment_neuropil(
             1,
         )
         # write out all of the channels
-        header_dict: dict[str, dict] = {}
         for chan, data in output_chan_datas:
             assert chan.id is not None
             save_channel_to_disk(session, chan, data)
@@ -405,4 +403,88 @@ def mask_affine(session: Session, image_paths: list[str] | None):
                 channel.mdata.append(ChannelMetadata(key="best-flip", value="yes"))
             else:
                 channel.mdata.append(ChannelMetadata(key="best-flip", value="no"))
+    session.commit()
+
+
+def align_to_mask(session: Session, image_paths: list[str] | None):
+    """
+    Align the image to the mask template
+    """
+    validate_db(session)
+    template_path = get_mask_template_path(session)
+    xform_mask: list[tuple[Channel, Channel]] = []
+    images = get_imgs(session, image_paths)
+    for image in images:
+        unflip_producer = aliased(AnalysisStep)
+        xform_chan = aliased(Channel)
+        best_mask = aliased(Channel)
+        unflip_mask = aliased(Channel)
+        unflip_mask_mdata = aliased(ChannelMetadata)
+        chan_xform_unflip = session.execute(
+            select(Channel, xform_chan, unflip_mask)
+            .join(ChannelMetadata, Channel.mdata)
+            .filter(ChannelMetadata.key == "best-flip", ChannelMetadata.value == "yes")
+            .join(Image, Channel.image)
+            .filter(Image.folder == image.folder)
+            .join(AnalysisStep, Channel.producer)
+            .join(xform_chan, AnalysisStep.output_channels)
+            .filter(xform_chan.channel_type == "xform")
+            .join(best_mask, AnalysisStep.input_channels)
+            .join(unflip_producer, best_mask.producer)
+            .join(unflip_mask, unflip_producer.output_channels)
+            .join(unflip_mask_mdata, unflip_mask.mdata)
+            .filter(unflip_mask_mdata.key == "flip", unflip_mask_mdata.value == "000")
+            .order_by(AnalysisStep.runtime.desc())
+        ).all()
+        n_hits = len(chan_xform_unflip)
+        if n_hits == 0:
+            raise InvalidStepError("missing channels")
+        logger.info("found %s matches for image %s", n_hits, image.folder)
+        _, xform, mask = chan_xform_unflip[0]
+        xform_mask.append((xform, mask))
+    for input_channels in xform_mask:
+        check_progress(session, input_channels, 3)
+    for xform, mask in xform_mask:
+        logger.warning(mask.image.folder)
+        analysis_step = AnalysisStep()
+        analysis_step.function = "align-to-mask"
+        analysis_step.kwargs = "{}"
+        analysis_step.runtime = datetime.now()
+        warp_mask_xform_chan = Channel()
+        warp_mask_xform_chan.path = "warp_mask.xform"
+        warp_mask_xform_chan.channel_type = "xform"
+        perform_analysis_step(
+            session,
+            analysis_step,
+            [xform, mask],
+            [warp_mask_xform_chan],
+            3,
+            copy_scale=True,
+        )
+        run_with_logging(
+            (
+                get_cmtk_executable("warp"),
+                "--outlist",
+                get_path(session, warp_mask_xform_chan),
+                "--grid-spacing",
+                "80",
+                "--fast",
+                "--exploration",
+                "26",
+                "--coarsest",
+                "8",
+                "--accuracy",
+                "0.8",
+                "--refine",
+                "4",
+                "--energy-weight",
+                "1e-1",
+                "--ic-weight",
+                "0",
+                "--initial",
+                get_path(session, xform),
+                template_path,
+                get_path(session, mask),
+            )
+        )
     session.commit()
