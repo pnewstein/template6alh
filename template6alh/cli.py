@@ -256,6 +256,7 @@ def mask_affine(
             click.echo(e)
             sys.exit(1)
 
+
 @main.command(
     help="""
     Does a warp transformation on the best flip
@@ -286,7 +287,6 @@ def align_to_mask(
             sys.exit(1)
 
 
-
 @main.command(
     help="""
     visualize nrrd files
@@ -314,12 +314,14 @@ def view(
 def template(ctx: click.Context):
     pass
 
+
 def validate_flip(ctx, param, value):
     _ = ctx, param
     valid_flips = get_args(template_creation.FlipLiteral)
     if value not in valid_flips:
         raise click.BadParameter(f"Should be one of {repr(valid_flips)}")
     return value
+
 
 @template.command(
     help="""
@@ -380,3 +382,36 @@ def make_mask_template(
         except InvalidStepError as e:
             click.echo(e)
             sys.exit(1)
+
+@template.command(
+    help="""
+    reformats fasII to mask template
+"""
+)
+@click.argument("image-folders", type=str, nargs=-1)
+@click.option(
+    "-f",
+    "--image-folders-file",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
+)
+@click.pass_context
+def reformat_fasii(
+    ctx: click.Context,
+    image_folders: list[str],
+    image_folders_file: str | None,
+):
+    ctx_dict = ctx.find_object(dict)
+    assert ctx_dict is not None
+    image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)
+    with Session(get_engine_with_context(ctx_dict)) as session:
+        try:
+            template_creation.reformat_fasii(
+                session,
+                image_paths=image_folders_or_none,
+            )
+        except InvalidStepError as e:
+            click.echo(e)
+            sys.exit(1)
+

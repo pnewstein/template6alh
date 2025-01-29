@@ -358,7 +358,7 @@ def mask_affine(session: Session, image_paths: list[str] | None):
         # Now register all images using affine
         run_with_logging(
             (
-                "reformatx",
+                get_cmtk_executable("reformatx"),
                 "-o",
                 get_path(session, affine_aligned_chan),
                 "--nn",

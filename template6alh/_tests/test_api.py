@@ -162,7 +162,6 @@ def check_align_to_mask(session: Session, root_dir):
     assert warped.exists()
 
 
-
 def test_api():
     with tempfile.TemporaryDirectory() as folder_str:
         folder = Path(folder_str)
@@ -225,6 +224,18 @@ def check_groupwise_template(session: Session, root_dir: Path):
     assert Path(path_from_db).resolve() == template_path.resolve()
 
 
+def check_reformat_fasii(session: Session, root_dir: Path):
+    template_creation.reformat_fasii(session, None)
+    paths = list(root_dir.glob("**/*mask_warped_fasii.nrrd"))
+    path = paths[0]
+    header = nrrd.read_header(str(path))
+    assert np.array_equal(header["space directions"], np.diag([1, 1, 1]))
+    image = session.execute(
+        select(sc.Channel).filter(sc.Channel.channel_type == "image")
+    ).scalars().first()
+    assert image.number == 1
+
+
 def test_template():
     with tempfile.TemporaryDirectory() as folder_str:
         folder = Path(folder_str)
@@ -249,3 +260,4 @@ def test_template():
             check_groupwise_template(session, root_dir)
             api.mask_affine(session, None)
             api.align_to_mask(session, None)
+            check_reformat_fasii(session, root_dir)
