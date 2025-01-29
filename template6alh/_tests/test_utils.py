@@ -53,7 +53,7 @@ def test_get_target_grid():
         data = np.zeros((10, 3, 100))
         header = {"spacings": [1, 2, 0.1]}
         nrrd.write(str(path), data=data, header=header)
-        assert get_target_grid(path) == "10,3,100:1.0,2.0,0.1"
+        assert get_target_grid(path) == "10,3,100:1.0000,2.0000,0.1000"
         header = {"space directions": np.diag([2, 20, 0.1])}
         nrrd.write(str(path), data=data, header=header)
-        assert get_target_grid(path) == "10,3,100:2.0,20.0,0.1"
+        assert get_target_grid(path) == "10,3,100:2.0000,20.0000,0.1000"

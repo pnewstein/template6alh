@@ -236,6 +236,8 @@ def get_target_grid(path: Path) -> str:
     compatable with --target-grid option of reformatx
     """
     # Nx,Ny,Nz:dX,dY,dZ[:Ox,Oy,Oz] (dims:pixel:offset)
+    def float_format(num) -> str:
+        return f"{float(num):.4f}"
     header = nrrd.read_header(str(path))
     sizes = header["sizes"]
     directions = header.get("space directions")
@@ -244,5 +246,5 @@ def get_target_grid(path: Path) -> str:
     else:
         spacings = header["spacings"]
     return (
-        f"{','.join(str(s) for s in sizes)}:{','.join(str(float(s)) for s in spacings)}"
+        f"{','.join(str(s) for s in sizes)}:{','.join(float_format(s) for s in spacings)}"
     )
