@@ -230,9 +230,11 @@ def check_reformat_fasii(session: Session, root_dir: Path):
     path = paths[0]
     header = nrrd.read_header(str(path))
     assert np.array_equal(header["space directions"], np.diag([1, 1, 1]))
-    image = session.execute(
-        select(sc.Channel).filter(sc.Channel.channel_type == "image")
-    ).scalars().first()
+    image = (
+        session.execute(select(sc.Channel).filter(sc.Channel.channel_type == "image"))
+        .scalars()
+        .first()
+    )
     assert image.number == 1
 
 

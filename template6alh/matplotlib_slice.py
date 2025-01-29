@@ -4,6 +4,7 @@ from PyQt5.QtCore import Qt
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 
+
 class ImageSlicer(QMainWindow):
     def __init__(self, volume: np.ndarray, app: QApplication):
         super().__init__()
@@ -32,14 +33,21 @@ class ImageSlicer(QMainWindow):
     def update_slice(self, slice_idx: int):
         self.current_slice = slice_idx
         self.ax.clear()
-        self.ax.imshow(self.volume[slice_idx, :, :].T, cmap='gray', aspect='equal', vmin=0, vmax=255)
+        self.ax.imshow(
+            self.volume[slice_idx, :, :].T,
+            cmap="gray",
+            aspect="equal",
+            vmin=0,
+            vmax=255,
+        )
         self.ax.set_title(f"Slice {slice_idx}")
-        self.ax.axis('off')
+        self.ax.axis("off")
         self.canvas.draw()
 
     def quit(self):
         # causes segfault
         self.app.quit()
+
 
 def get_slicer(volume: np.ndarray, title: str) -> ImageSlicer:
     app = QApplication([])
@@ -48,4 +56,3 @@ def get_slicer(volume: np.ndarray, title: str) -> ImageSlicer:
     slicer.setWindowTitle(title)
     slicer.show()
     return slicer
-
