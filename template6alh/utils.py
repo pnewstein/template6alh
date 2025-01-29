@@ -228,3 +228,21 @@ def image_folders_from_file(
         )
         sys.exit(2)
     return Path(image_folders_file).read_text().split()
+
+
+def get_target_grid(path: Path) -> str:
+    """
+    reads a header from a nrrd file to get a target-grid string which is
+    compatable with --target-grid option of reformatx
+    """
+    # Nx,Ny,Nz:dX,dY,dZ[:Ox,Oy,Oz] (dims:pixel:offset)
+    header = nrrd.read_header(str(path))
+    sizes = header["sizes"]
+    directions = header.get("space directions")
+    if directions is not None:
+        spacings = np.diag(directions)
+    else:
+        spacings = header["spacings"]
+    return (
+        f"{','.join(str(s) for s in sizes)}:{','.join(str(float(s)) for s in spacings)}"
+    )

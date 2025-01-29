@@ -13,6 +13,7 @@ from template6alh.utils import (
     get_engine_with_context,
     write_nhdrs,
     get_flip_xform,
+    get_target_grid,
 )
 
 
@@ -43,3 +44,16 @@ def test_write_nhdrs():
         write_nhdrs({"out": {}}, data, folder)
         read_data, _ = nrrd.read(folder / "out.nhdr")
         assert np.array_equal(read_data, data)
+
+
+def test_get_target_grid():
+    with TemporaryDirectory() as folder_str:
+        folder = Path(folder_str)
+        path = folder / "out.nrrd"
+        data = np.zeros((10, 3, 100))
+        header = {"spacings": [1, 2, 0.1]}
+        nrrd.write(str(path), data=data, header=header)
+        assert get_target_grid(path) == "10,3,100:1.0,2.0,0.1"
+        header = {"space directions": np.diag([2, 20, 0.1])}
+        nrrd.write(str(path), data=data, header=header)
+        assert get_target_grid(path) == "10,3,100:2.0,20.0,0.1"
