@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, joinedload, aliased
 from sqlalchemy import select, Engine, inspect
 import nrrd
 import numpy as np
+import click
 
 from .segment_neuropil import make_neuropil_mask, default_args_make_neuropil_mask
 from .read_raw_data import read_czi, read_test
@@ -44,6 +45,7 @@ from .utils import (
     run_with_logging,
     FlipLiteral,
 )
+from .matplotlib_slice import get_slicer, ImageSlicer
 
 logger = logging.getLogger()
 
@@ -404,6 +406,34 @@ def mask_affine(session: Session, image_paths: list[str] | None):
             else:
                 channel.mdata.append(ChannelMetadata(key="best-flip", value="no"))
     session.commit()
+
+def visualize_best_match(session, image_paths: list[str] | None):
+    """
+    visualizes the best match for each image
+    """
+    validate_db(session)
+    images = get_imgs(session, image_paths)
+    channels: list[Channel] = []
+    for image in images:
+        channel = session.execute(
+            select(Channel)
+            .join(ChannelMetadata, Channel.mdata)
+            .filter(ChannelMetadata.key == "best-flip", ChannelMetadata.value == "yes")
+            .join(Image, Channel.image)
+            .filter(Image.folder == image.folder)
+            .join(AnalysisStep, Channel.producer)
+            .order_by(AnalysisStep.runtime.desc())
+        ).scalars().first()
+        if channel is None:
+            logger.warning("could not find a best flip for image %s", image.folder)
+        channels.append(channel)
+    slicers: list[ImageSlicer] = []
+    for channel in channels:
+        data, _ = nrrd.read(str(get_path(session, channel)))
+        slicers.append(get_slicer(data, channel.image.folder))
+    click.confirm("Close all windows?")
+    for slicer in slicers:
+        slicer.quit()
 
 
 def align_to_mask(session: Session, image_paths: list[str] | None):
