@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import sys
 from typing import Literal, Sequence
-from subprocess import run
+from subprocess import run, CompletedProcess
 
 import pandas as pd
 from sqlalchemy import Engine, create_engine
@@ -44,7 +44,7 @@ affine_xform {{
 }}"""
 
 
-def run_with_logging(args: Sequence[str | Path]):
+def run_with_logging(args: Sequence[str | Path]) -> CompletedProcess[bytes]:
     logger.info(" ".join(str(a) for a in args))
     output = run(args, capture_output=True)
     std_err = output.stderr.decode()
@@ -54,6 +54,7 @@ def run_with_logging(args: Sequence[str | Path]):
     if std_out:
         logger.info(std_out)
     output.check_returncode()
+    return output
 
 
 def get_flip_xform(flip: FlipLiteral) -> str:
@@ -230,21 +231,40 @@ def image_folders_from_file(
     return Path(image_folders_file).read_text().split()
 
 
+def get_spacings(metadata: dict) -> np.ndarray:
+    directions = metadata.get("space directions")
+    if directions is not None:
+        return np.diag(directions)
+    else:
+        return metadata["spacings"]
+
+
 def get_target_grid(path: Path) -> str:
     """
     reads a header from a nrrd file to get a target-grid string which is
     compatable with --target-grid option of reformatx
     """
+
     # Nx,Ny,Nz:dX,dY,dZ[:Ox,Oy,Oz] (dims:pixel:offset)
     def float_format(num) -> str:
         return f"{float(num):.4f}"
+
     header = nrrd.read_header(str(path))
+    spacings = get_spacings(header)
     sizes = header["sizes"]
-    directions = header.get("space directions")
-    if directions is not None:
-        spacings = np.diag(directions)
-    else:
-        spacings = header["spacings"]
-    return (
-        f"{','.join(str(s) for s in sizes)}:{','.join(float_format(s) for s in spacings)}"
+    return f"{','.join(str(s) for s in sizes)}:{','.join(float_format(s) for s in spacings)}"
+
+
+def get_landmark_affine(src_landmarks: Path, dst_landmarks: Path, outpath: Path):
+    """
+    Does a rigid registration between landmarks to create a affine xform
+    """
+    run_with_logging(
+        (
+            get_cmtk_executable("fit_affine_xform_landmarks"),
+            "--rigid",
+            dst_landmarks,
+            src_landmarks,
+            outpath,
+        )
     )

@@ -2,7 +2,6 @@
 API functions specificaly for template creations
 """
 
-from typing import Literal
 from datetime import datetime
 from subprocess import run
 from logging import getLogger
@@ -12,6 +11,7 @@ from sqlalchemy.orm import Session, joinedload, aliased
 from sqlalchemy import select
 import numpy as np
 import nrrd
+import click
 
 from .sql_classes import Channel, Image, AnalysisStep, ChannelMetadata, GlobalConfig
 from .execptions import InvalidStepError, BadImageFolder
@@ -24,6 +24,7 @@ from .sql_utils import (
     check_progress,
 )
 from .utils import get_cmtk_executable, FlipLiteral, run_with_logging, get_target_grid
+from . import matplotlib_slice
 
 logger = getLogger("template6alh")
 
@@ -217,3 +218,27 @@ def reformat_fasii(session: Session, image_paths: list[str] | None):
             )
         )
     session.commit()
+
+
+def write_landmarks(session: Session):
+    existing_record = session.execute(
+        select(GlobalConfig).filter(GlobalConfig.key == "mask_template_path")
+    ).scalar_one_or_none()
+    assert existing_record is not None
+    in_path = Path(existing_record.value)
+    if not in_path.exists():
+        raise InvalidStepError("Missing template at %s", str(in_path))
+    out_path = in_path.with_suffix(".landmarks")
+    existing_record = session.execute(
+        select(GlobalConfig).filter(GlobalConfig.key == "mask_template_landmarks_path")
+    ).scalar_one_or_none()
+    if existing_record is None:
+        session.add(
+            GlobalConfig(key="mask_template_landmarks_path", value=str(out_path))
+        )
+    else:
+        existing_record.value = str(out_path)
+    session.commit()
+    slicer = matplotlib_slice.write_landmarks(in_path, out_path)
+    click.confirm("Close all windows?")
+    slicer.quit()

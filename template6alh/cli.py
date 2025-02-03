@@ -11,11 +11,10 @@ import nrrd
 import click
 from sqlalchemy.orm import Session
 
-from . import api, template_creation
+from . import api, template_creation, matplotlib_slice
 from .logger import logger
 from .execptions import InvalidStepError
 from .utils import get_engine_with_context, image_folders_from_file
-from .matplotlib_slice import get_slicer
 
 
 @click.group()
@@ -303,7 +302,7 @@ def view(
             click.echo(f"{image_path} is not an nrrd", err=True)
             continue
         data, _ = nrrd.read(image)
-        slicers.append(get_slicer(data, image))
+        slicers.append(matplotlib_slice.get_slicer(data, image))
     click.confirm("Close all windows?")
     for slicer in slicers:
         slicer.quit()
@@ -337,6 +336,7 @@ def visualize_best_aligned_mask(
         except InvalidStepError as e:
             click.echo(e)
             sys.exit(1)
+
 
 @main.group(help="Commands for creating a template image")
 @click.pass_context
@@ -412,6 +412,7 @@ def make_mask_template(
             click.echo(e)
             sys.exit(1)
 
+
 @template.command(
     help="""
     reformats fasII to mask template
@@ -444,3 +445,21 @@ def reformat_fasii(
             click.echo(e)
             sys.exit(1)
 
+
+@template.command(
+    help="""
+    uses a gui to select coordinates of the newly formed template
+"""
+)
+@click.pass_context
+def select_template_coordinates(
+    ctx: click.Context,
+):
+    ctx_dict = ctx.find_object(dict)
+    assert ctx_dict is not None
+    with Session(get_engine_with_context(ctx_dict)) as session:
+        try:
+            template_creation.write_landmarks(session)
+        except InvalidStepError as e:
+            click.echo(e)
+            sys.exit(1)
