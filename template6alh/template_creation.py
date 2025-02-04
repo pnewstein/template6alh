@@ -22,6 +22,7 @@ from .sql_utils import (
     validate_db,
     get_imgs,
     check_progress,
+    ConfigDict,
 )
 from .utils import get_cmtk_executable, FlipLiteral, run_with_logging, get_target_grid
 from . import matplotlib_slice
@@ -140,16 +141,7 @@ def iterative_mask_template(session: Session, make_template=True):
     template = template.astype(np.uint8)
     nrrd.write(file=str(mask_template_path), data=template, header=template_md)
     # add to database
-    existing_record = session.execute(
-        select(GlobalConfig).filter(GlobalConfig.key == "mask_template_path")
-    ).scalar_one_or_none()
-    if existing_record is None:
-        mask_path_record = GlobalConfig()
-        mask_path_record.key = "mask_template_path"
-        mask_path_record.value = str(mask_template_path.resolve())
-        session.add(mask_path_record)
-    else:
-        existing_record.value = str(mask_template_path.resolve())
+    ConfigDict(session)["mask_template_path"] = str(mask_template_path.resolve())
     session.commit()
 
 
@@ -221,23 +213,12 @@ def reformat_fasii(session: Session, image_paths: list[str] | None):
 
 
 def write_landmarks(session: Session):
-    existing_record = session.execute(
-        select(GlobalConfig).filter(GlobalConfig.key == "mask_template_path")
-    ).scalar_one_or_none()
-    assert existing_record is not None
-    in_path = Path(existing_record.value)
+    config_dict = ConfigDict(session)
+    in_path = Path(config_dict["mask_template_path"])
     if not in_path.exists():
         raise InvalidStepError("Missing template at %s", str(in_path))
     out_path = in_path.with_suffix(".landmarks")
-    existing_record = session.execute(
-        select(GlobalConfig).filter(GlobalConfig.key == "mask_template_landmarks_path")
-    ).scalar_one_or_none()
-    if existing_record is None:
-        session.add(
-            GlobalConfig(key="mask_template_landmarks_path", value=str(out_path))
-        )
-    else:
-        existing_record.value = str(out_path)
+    config_dict["mask_template_landmarks_path"] = str(out_path)
     session.commit()
     slicer = matplotlib_slice.write_landmarks(in_path, out_path)
     click.confirm("Close all windows?")

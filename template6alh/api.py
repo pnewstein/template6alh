@@ -35,6 +35,7 @@ from .sql_utils import (
     validate_db,
     save_channel_to_disk,
     get_mask_template_path,
+    ConfigDict,
 )
 from .execptions import NoRawData, InvalidStepError
 from .utils import (
@@ -59,10 +60,7 @@ def get_paths(session: Session, db_path: Path | None) -> dict[str, Path]:
     out_dict = {"database path": db_path, "logfile path": get_logfile_path()}
     assert session.bind is not None
     if GlobalConfig.__tablename__ in inspect(session.bind).get_table_names():
-        config = session.execute(
-            select(GlobalConfig).where(GlobalConfig.key == "prefix_dir")
-        ).scalar_one()
-        out_dict["Data cache prefix"] = Path(config.value)
+        out_dict["Data cache prefix"] = Path(ConfigDict(session)["prefix_dir"])
     return out_dict
 
 
@@ -84,8 +82,7 @@ def init(
     root_dir.mkdir(exist_ok=True)
     Base.metadata.create_all(engine)
     with Session(engine) as session:
-        gc = GlobalConfig(key="prefix_dir", value=str(root_dir))
-        session.add(gc)
+        ConfigDict(session)["prefix_dir"] = str(root_dir)
         add_more_raw(
             session=session,
             raw_data=raw_data,

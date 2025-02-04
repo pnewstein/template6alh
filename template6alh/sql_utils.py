@@ -2,7 +2,7 @@
 Some utilities for accessing sql
 """
 
-from typing import Sequence, Literal
+from typing import Sequence, Literal, TypeAlias
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +21,7 @@ from .execptions import (
     SkippingStep,
     UninitializedDatabase,
     CannotFindTemplate,
+    InvalidStepError,
 )
 
 logger = logging.getLogger("template6alh")
@@ -113,18 +114,54 @@ def get_imgs(session: Session, image_ids: list[str] | None) -> Sequence[Image]:
     return images
 
 
+ConfigKey: TypeAlias = Literal[
+    "prefix_dir", "mask_template_path", "mask_template_landmarks_path"
+]
+
+
+class ConfigDict:
+    """
+    a dict like interface to global config
+    """
+
+    def __init__(self, session: Session):
+        self.session = session
+
+    def _exising_record_or_raise(self, key: ConfigKey) -> GlobalConfig:
+        """
+        raises InvalidStepError
+        """
+        existing_record = self.session.execute(
+            select(GlobalConfig).filter(GlobalConfig.key == key)
+        ).scalar_one_or_none()
+        if existing_record is None:
+            raise InvalidStepError(f"Missing key {key} from config")
+        return existing_record
+
+    def __getitem__(self, key: ConfigKey) -> str:
+        existing_record = self._exising_record_or_raise(key)
+        return existing_record.value
+
+    def __setitem__(self, key: ConfigKey, item: str):
+        new_record = False
+        try:
+            existing_record = self._exising_record_or_raise(key)
+        except InvalidStepError:
+            new_record = True
+            existing_record = GlobalConfig()
+            existing_record.key = key
+        existing_record.value = item
+        if new_record:
+            self.session.add(existing_record)
+
+
 def get_path(session: Session, record: Channel | Image | None) -> Path:
     """
     returns the folder path or file path of (resepectivly) a channel or image
 
     Raises no prefix_dir
     """
-    existing_record = session.execute(
-        select(GlobalConfig).filter(GlobalConfig.key == "prefix_dir")
-    ).scalar_one_or_none()
-    if existing_record is None:
-        raise UninitializedDatabase()
-    prefix_dir = Path(existing_record.value)
+    prefix_dir = Path(ConfigDict(session)["prefix_dir"])
     if record is None:
         return prefix_dir
     suffix = (
@@ -248,17 +285,13 @@ def get_mask_template_path(session: Session) -> Path:
     """
     gets the path to the mask_template
     """
-    existing_record = session.execute(
-        select(GlobalConfig).filter(GlobalConfig.key == "mask_template_path")
-    ).scalar_one_or_none()
-    if existing_record is not None:
-        return Path(existing_record.value)
-    existing_record = session.execute(
-        select(GlobalConfig).filter(GlobalConfig.key == "prefix_dir")
-    ).scalar_one_or_none()
-    if existing_record is None:
-        raise UninitializedDatabase()
-    template_path = Path(existing_record.value) / "template/mask_template.nrrd"
+    config_dict = ConfigDict(session)
+    try:
+        return Path(config_dict["mask_template_path"])
+    except InvalidStepError:
+        pass
+    prefix_dir = Path(config_dict["prefix_dir"])
+    template_path = prefix_dir / "template/mask_template.nrrd"
     if not template_path.exists():
         raise CannotFindTemplate()
     return template_path
