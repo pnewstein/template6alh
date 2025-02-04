@@ -249,6 +249,7 @@ def clean(session: Session):
             continue
         for cm in channel.mdata:
             session.delete(cm)
+        logger.info("removing %s from db", channel.path)
         session.delete(channel)
     session.commit()
 
