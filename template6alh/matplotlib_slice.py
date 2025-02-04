@@ -172,6 +172,6 @@ def write_landmarks(in_path: Path, out_path: Path) -> ImageSlicer:
     app = QApplication([])
     slicer = ImageSlicer(data, app, coords_generator(callback, get_spacings(md)))
     slicer.resize(800, 600)
-    slicer.setWindowTitle("test")
+    slicer.setWindowTitle(str(in_path))
     slicer.show()
     return slicer
