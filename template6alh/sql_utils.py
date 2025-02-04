@@ -281,20 +281,24 @@ def save_channel_to_disk(session: Session, channel: Channel, data: np.ndarray):
     )
 
 
-def get_mask_template_path(session: Session) -> Path:
+def get_mask_template_path(session: Session) -> tuple[Path, Path]:
     """
     gets the path to the mask_template
+    returns image_template, landmark_template
     """
     config_dict = ConfigDict(session)
     try:
-        return Path(config_dict["mask_template_path"])
+        return Path(config_dict["mask_template_path"]), Path(
+            config_dict["mask_template_landmarks_path"]
+        )
     except InvalidStepError:
         pass
     prefix_dir = Path(config_dict["prefix_dir"])
-    template_path = prefix_dir / "template/mask_template.nrrd"
-    if not template_path.exists():
+    image_path = prefix_dir / "template/mask_template.nrrd"
+    landmarks_path = prefix_dir / "template/mask_template.landmarks"
+    if not image_path.exists():
         raise CannotFindTemplate()
-    return template_path
+    return image_path, landmarks_path
 
 
 def select_most_recent(

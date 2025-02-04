@@ -123,6 +123,21 @@ def check_make_landmarks(session: Session, root_dir: Path):
         get_path(session, channel).write_text(eg_coords.to_cmtk())
 
 
+def check_landmark_register(session: Session, root_dir: Path):
+    api.landmark_register(session, None)
+    assert list(root_dir.glob("**/*landmark.xform"))
+    images = get_imgs(session, None)
+    assert len(images) == 4
+    for image in images:
+        channel = (
+            session.execute(select_most_recent("landmark-register", image))
+            .scalars()
+            .first()
+        )
+        assert isinstance(channel, sc.Channel)
+        assert channel.channel_type == "xform"
+
+
 def check_align_masks(session: Session, root_dir: Path):
     return
     api.segment_neuropil(session, ["002"], None, None, None)
@@ -212,6 +227,8 @@ def test_api():
                 binary_blobs(length=20, n_dim=3).astype(np.uint8) * 254,
                 header=header,
             )
+            mt_path.with_suffix(".landmarks").write_text(eg_coords.to_cmtk())
+            check_landmark_register(session, root_dir)
             check_align_masks(session, root_dir)
             check_align_to_mask(session, root_dir)
 

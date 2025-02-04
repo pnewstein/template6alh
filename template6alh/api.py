@@ -46,6 +46,7 @@ from .utils import (
     get_cmtk_executable,
     run_with_logging,
     FlipLiteral,
+    get_landmark_affine,
 )
 from .matplotlib_slice import get_slicer, ImageSlicer, write_landmarks
 
@@ -263,7 +264,7 @@ def make_landmarks(session: Session, image_paths: list[str] | None, skip=False):
             .first()
         )
         if channel_or_none is None:
-            logger.warning("no channel for image %s", image.path)
+            logger.warning("no channel for image %s", image.folder)
             continue
         channels.append(channel_or_none)
     if len(channels) == 0:
@@ -295,13 +296,54 @@ def make_landmarks(session: Session, image_paths: list[str] | None, skip=False):
             slicer.quit()
 
 
+def landmark_register(session: Session, image_paths: list[str] | None):
+    """
+    performs a landmark registration
+    """
+    validate_db(session)
+    images = get_imgs(session, image_paths)
+    _, template_landmarks = get_mask_template_path(session)
+    channels: list[Channel] = []
+    for image in images:
+        channel_or_none = (
+            session.execute(select_most_recent("make-landmarks", image))
+            .scalars()
+            .first()
+        )
+        if channel_or_none is None:
+            logger.warning("no channel for image %s", image.folder)
+            continue
+        channels.append(channel_or_none)
+    if len(channels) == 0:
+        raise InvalidStepError("No images found")
+    for channel in channels:
+        check_progress(session, [channel], 3)
+    for channel in channels:
+        out_channel = Channel()
+        out_channel.channel_type = "xform"
+        out_channel.path = "landmark.xform"
+        step = AnalysisStep()
+        step.function = "landmark-register"
+        step.kwargs = "{}"
+        step.runtime = datetime.now()
+        perform_analysis_step(
+            session, step, [channel], [out_channel], 3, copy_scale=True
+        )
+        get_landmark_affine(
+            get_path(session, channel),
+            template_landmarks,
+            get_path(session, out_channel),
+        )
+    session.commit()
+
+
 # TODO allow kwargs
 def mask_affine(session: Session, image_paths: list[str] | None):
     """
     alignes all of the templates masks
     """
     validate_db(session)
-    template_path = get_mask_template_path(session)
+    template_path, _ = get_mask_template_path(session)
     images = get_imgs(session, image_paths)
     channels_flips: list[tuple[Channel, FlipLiteral]] = []
     for image in images:
@@ -483,7 +525,7 @@ def align_to_mask(session: Session, image_paths: list[str] | None):
     Align the image to the mask template
     """
     validate_db(session)
-    template_path = get_mask_template_path(session)
+    template_path, _ = get_mask_template_path(session)
     xform_mask: list[tuple[Channel, Channel]] = []
     images = get_imgs(session, image_paths)
     for image in images:

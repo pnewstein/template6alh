@@ -5,7 +5,6 @@ tests sql
 import tempfile
 from pathlib import Path
 from datetime import datetime
-import time
 
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, select
@@ -269,7 +268,7 @@ def test_get_mask_template_path():
         mt_path = Path(folder) / "template/mask_template.nrrd"
         mt_path.parent.mkdir(exist_ok=True)
         mt_path.touch(exist_ok=True)
-        assert get_mask_template_path(session) == mt_path
+        assert get_mask_template_path(session)[0] == mt_path
 
 
 if __name__ == "__main__":
