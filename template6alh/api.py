@@ -208,18 +208,13 @@ def segment_neuropil(
         else:
             out_scale = tuple([kwargs["new_scale"]] * 3)
         # write out data
-        output_chan_datas: list[tuple[Channel, np.ndarray]] = []
-        for flip in (a + b + c for a in "01" for b in "01" for c in "01"):
-            flip_axs = tuple(i for i, zero_one in enumerate(flip) if zero_one == "1")
-            channel = Channel()
-            channel.path = f"neuropil_mask_{flip}.nrrd"
-            channel.channel_type = "mask"
-            channel.scalez = out_scale[0]
-            channel.scaley = out_scale[1]
-            channel.scalex = out_scale[2]
-            channel.mdata = [ChannelMetadata(key="flip", value=flip)]
-            output_chan_datas.append((channel, np.flip(out_data, flip_axs)))
-            # end iterate flip
+        out_channel = Channel()
+        out_channel.path = f"neuropil_mask.nrrd"
+        out_channel.channel_type = "mask"
+        out_channel.scalez = out_scale[0]
+        out_channel.scaley = out_scale[1]
+        out_channel.scalex = out_scale[2]
+        # end iterate flip
         perform_analysis_step(
             session,
             AnalysisStep(
@@ -228,13 +223,12 @@ def segment_neuropil(
                 runtime=datetime.now(),
             ),
             [raw_channel],
-            [cd[0] for cd in output_chan_datas],
+            [out_channel],
             1,
         )
         # write out all of the channels
-        for chan, data in output_chan_datas:
-            assert chan.id is not None
-            save_channel_to_disk(session, chan, data)
+        assert out_channel.id is not None
+        save_channel_to_disk(session, out_channel, out_data)
         session.commit()
 
 
