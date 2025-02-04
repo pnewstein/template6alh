@@ -11,7 +11,7 @@ import nrrd
 import click
 from sqlalchemy.orm import Session
 
-from . import api, template_creation, matplotlib_slice
+from . import api, template_creation, matplotlib_slice, sql_utils
 from .logger import logger
 from .execptions import InvalidStepError
 from .utils import get_engine_with_context, image_folders_from_file
@@ -402,6 +402,59 @@ def visualize_best_aligned_mask(
 @click.pass_context
 def template(ctx: click.Context):
     pass
+
+
+@template.command(
+    help="""
+    Aligns masks to optional landmark_path using landmarks
+"""
+)
+@click.argument("image-folders", type=str, nargs=-1)
+@click.option(
+    "-f",
+    "--image-folders-file",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
+)
+@click.option(
+    "-l",
+    "--landmark-path",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="Landmarks for the template image. Reasonalbe default to center a Drosophila VNC",
+)
+@click.option(
+    "-t",
+    "--target-grid",
+    type=str,
+    default=None,
+    help="target-grid parameter passed to reformatx."
+    "Reasonalbe default to center a Drosophila VNC: 80,451,200:0.5000,0.5000,0.5000",
+)
+@click.pass_context
+def landmark_align(
+    ctx: click.Context,
+    image_folders: list[str],
+    image_folders_file: str | None,
+    landmark_path: str | None,
+    target_grid: str | None,
+):
+    ctx_dict = ctx.find_object(dict)
+    assert ctx_dict is not None
+    image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)
+    with Session(get_engine_with_context(ctx_dict)) as session:
+        try:
+            sql_utils.validate_db(session)
+            template_creation.landmark_align(
+                session,
+                image_paths=image_folders_or_none,
+                landmark_path=None if landmark_path is None else Path(landmark_path),
+                target_grid=target_grid,
+            )
+        except InvalidStepError as e:
+            click.echo(e)
+            sys.exit(1)
 
 
 def validate_flip(ctx, param, value):

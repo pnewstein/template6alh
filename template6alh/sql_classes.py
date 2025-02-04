@@ -117,9 +117,9 @@ class Channel(Base):
     path: Mapped[str] = mapped_column(String, nullable=False)
     channel_type: Mapped[ChannelType] = mapped_column(String, nullable=False)
     step_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    scalex: Mapped[int] = mapped_column(Float, nullable=False)
-    scaley: Mapped[int] = mapped_column(Float, nullable=False)
-    scalez: Mapped[int] = mapped_column(Float, nullable=False)
+    scalex: Mapped[float] = mapped_column(Float, nullable=False)
+    scaley: Mapped[float] = mapped_column(Float, nullable=False)
+    scalez: Mapped[float] = mapped_column(Float, nullable=False)
     number: Mapped[int] = mapped_column(Integer, nullable=True)
     # relationships
     image_id: Mapped[int] = mapped_column(ForeignKey("image.id"))

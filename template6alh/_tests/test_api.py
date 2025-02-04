@@ -111,7 +111,7 @@ def check_select_most_recent(session: Session):
 def check_make_landmarks(session: Session, root_dir: Path):
     api.make_landmarks(session, None, True)
     images = get_imgs(session, None)
-    assert len(images) == 4
+    assert len(images) != 0
     for image in images:
         channel = (
             session.execute(select_most_recent("make-landmarks", image))
@@ -233,6 +233,21 @@ def test_api():
             check_align_to_mask(session, root_dir)
 
 
+def check_landmark_align(session: Session, root_dir: Path):
+    template_creation.landmark_align(session, None, None, target_grid="8,45,20:5,5,5")
+    assert list(root_dir.glob("**/*landmark_reformat.nrrd"))
+    images = get_imgs(session, None)
+    assert len(images) != 0
+    for image in images:
+        channel = (
+            session.execute(select_most_recent("landmark-align", image))
+            .scalars()
+            .first()
+        )
+        assert isinstance(channel, sc.Channel)
+        assert channel.channel_type == "aligned-mask"
+
+
 def check_select_images(session: Session, root_dir: Path):
     return
     template_creation.select_images(session, None, "001")
@@ -306,7 +321,8 @@ def test_template():
         )
         with Session(engine) as session:
             api.segment_neuropil(session, None, None, None, None)
-            api.segment_neuropil(session, ["001"], None, None, None)
+            check_make_landmarks(session, root_dir)
+            check_landmark_align(session, root_dir)
             check_select_images(session, root_dir)
             check_groupwise_template(session, root_dir)
             # api.mask_affine(session, None)

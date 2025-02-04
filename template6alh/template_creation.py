@@ -3,6 +3,7 @@ API functions specificaly for template creations
 """
 
 from datetime import datetime
+import re
 from subprocess import run
 from logging import getLogger
 from pathlib import Path
@@ -23,11 +24,81 @@ from .sql_utils import (
     get_imgs,
     check_progress,
     ConfigDict,
+    select_most_recent,
 )
 from .utils import get_cmtk_executable, FlipLiteral, run_with_logging, get_target_grid
-from . import matplotlib_slice
+from . import matplotlib_slice, api
 
 logger = getLogger("template6alh")
+
+
+def landmark_align(
+    session: Session,
+    image_paths: list[str] | None,
+    landmark_path: Path | None,
+    target_grid: str | None,
+):
+    """
+    does registration (uing api.landmark_register) and reformating
+    """
+    config_dict = ConfigDict(session)
+    if landmark_path is None:
+        landmark_path = (
+            Path(config_dict["prefix_dir"]) / "template/mask_template.landmarks"
+        )
+        landmark_path.parent.mkdir(parents=True, exist_ok=True)
+        # prevent error when getting path later on
+        landmark_path.with_suffix(".nrrd").touch()
+        landmark_path.write_text(
+            "25.0 20.0 50.0 brain\n25.0 20.0 50.0 sez\n35.0 170.0 50.0 tip"
+        )
+    if target_grid is None:
+        target_grid = "80,451,200:0.5000,0.5000,0.5000"
+    (match,) = re.finditer(r".*:(.+),(.+),(.+)", target_grid)
+    z_str, y_str, x_str = match.groups()
+    api.landmark_register(session, image_paths)
+    images = get_imgs(session, image_paths)
+    for image in images:
+        MaskChan = aliased(Channel)
+        MakeLandmarks = aliased(AnalysisStep)
+        Landmarks = aliased(Channel)
+        stmt = (
+            select_most_recent("landmark-register", image, select(Channel, MaskChan))
+            .join(Landmarks, AnalysisStep.input_channels)
+            .join(MakeLandmarks, Landmarks.producer)
+            .join(MaskChan, MakeLandmarks.input_channels)
+        )
+        xform_mask_chan = session.execute(stmt).first()
+        if xform_mask_chan is None:
+            logger.warning("could not find a best flip for image %s", image.folder)
+            continue
+        xform, mask_chan = xform_mask_chan
+        assert mask_chan.channel_type == "mask"
+        assert xform.channel_type == "xform"
+        output_channel = Channel()
+        output_channel.path = "landmark_reformat.nrrd"
+        output_channel.channel_type = "aligned-mask"
+        output_channel.scalez = float(z_str)
+        output_channel.scaley = float(y_str)
+        output_channel.scalex = float(x_str)
+        step = AnalysisStep()
+        step.function = "landmark-align"
+        step.kwargs = repr({"landmark_path": landmark_path, "target_grid": target_grid})
+        step.runtime = datetime.now()
+        perform_analysis_step(session, step, [xform, mask_chan], [output_channel], 3)
+        run_with_logging(
+            (
+                get_cmtk_executable("reformatx"),
+                "-o",
+                get_path(session, output_channel),
+                "--target-grid",
+                target_grid,
+                "--floating",
+                get_path(session, mask_chan),
+                get_path(session, xform),
+            )
+        )
+    session.commit()
 
 
 def select_images(session: Session, image_paths: list[str] | None, flip: FlipLiteral):
