@@ -228,6 +228,36 @@ def clean(ctx: click.Context):
 
 @main.command(
     help="""
+    use a image slicer to find lanmarks on all segmented images
+"""
+)
+@click.argument("image-folders", type=str, nargs=-1)
+@click.option(
+    "-f",
+    "--image-folders-file",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
+)
+@click.pass_context
+def make_landmarks(
+    ctx: click.Context,
+    image_folders: list[str],
+    image_folders_file: str | None,
+):
+    ctx_dict = ctx.find_object(dict)
+    assert ctx_dict is not None
+    image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)
+    with Session(get_engine_with_context(ctx_dict)) as session:
+        try:
+            api.make_landmarks(session, image_folders_or_none)
+        except InvalidStepError as e:
+            click.echo(e)
+            sys.exit(1)
+
+
+@main.command(
+    help="""
     Alignes mask to template mask with affine xform and selects the best flip
 """
 )

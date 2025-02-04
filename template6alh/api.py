@@ -1,7 +1,7 @@
 """
 defines high level functions to manipulate the data
 
-there is a one to one corrispondance between api functions and cli options
+there is a one to one correspondence between api functions and cli options
 """
 
 from pathlib import Path
@@ -36,6 +36,7 @@ from .sql_utils import (
     save_channel_to_disk,
     get_mask_template_path,
     ConfigDict,
+    select_most_recent,
 )
 from .execptions import NoRawData, InvalidStepError
 from .utils import (
@@ -46,7 +47,7 @@ from .utils import (
     run_with_logging,
     FlipLiteral,
 )
-from .matplotlib_slice import get_slicer, ImageSlicer
+from .matplotlib_slice import get_slicer, ImageSlicer, write_landmarks
 
 logger = logging.getLogger()
 
@@ -249,6 +250,49 @@ def clean(session: Session):
             session.delete(cm)
         session.delete(channel)
     session.commit()
+
+
+def make_landmarks(session: Session, image_paths: list[str] | None, skip=False):
+    validate_db(session)
+    images = get_imgs(session, image_paths)
+    channels: list[Channel] = []
+    for image in images:
+        channel_or_none = (
+            session.execute(select_most_recent("make-neuropil-mask", image))
+            .scalars()
+            .first()
+        )
+        if channel_or_none is None:
+            logger.warning("no channel for image %s", image.path)
+            continue
+        channels.append(channel_or_none)
+    if len(channels) == 0:
+        raise InvalidStepError("No images found")
+    out_channels: list[Channel] = []
+    for channel in channels:
+        out_channel = Channel()
+        out_channel.channel_type = "landmarks"
+        out_channel.path = ".landmarks"
+        step = AnalysisStep()
+        step.function = "make-landmarks"
+        step.kwargs = "{}"
+        step.runtime = datetime.now()
+        perform_analysis_step(
+            session, step, [channel], [out_channel], 2, copy_scale=True
+        )
+        out_channels.append(out_channel)
+    session.commit()
+    slicers: list[ImageSlicer] = []
+    if not skip:
+        for channel, out_channel in zip(channels, out_channels):
+            slicers.append(
+                write_landmarks(
+                    get_path(session, channel), get_path(session, out_channel)
+                )
+            )
+        click.confirm("Close all images")
+        for slicer in slicers:
+            slicer.quit()
 
 
 # TODO allow kwargs

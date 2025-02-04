@@ -13,14 +13,17 @@ from sqlalchemy import Engine, Connection, select, MetaData
 from sqlalchemy.orm import Session, aliased
 from skimage.data import binary_blobs
 
-from template6alh import api, template_creation
+from template6alh import api, template_creation, matplotlib_slice
 from template6alh import sql_classes as sc
 from template6alh.utils import get_engine
-from template6alh.sql_utils import get_path
+from template6alh.sql_utils import get_path, select_most_recent, get_imgs
 
 logger = logging.getLogger()
 logger.setLevel("DEBUG")
 
+eg_coords = matplotlib_slice.CoordsSet(
+    brain=(0, 0, 0), sez=(0, 1, 1), tip=(1, 0, 1), scale=np.array([1, 1, 1])
+)
 
 header = dict(
     [
@@ -88,6 +91,36 @@ def check_clean(session: Session, root_dir: Path):
     api.clean(session)
     channels = session.execute(select(sc.Channel)).scalars().all()
     assert len(channels) == 12
+
+
+def check_select_most_recent(session: Session):
+    api.segment_neuropil(session, None, 2, None, None)
+    images = get_imgs(session, None)
+    assert len(images) == 4
+    for image in images:
+        channel = (
+            session.execute(select_most_recent("make-neuropil-mask", image))
+            .scalars()
+            .first()
+        )
+        assert isinstance(channel, sc.Channel)
+        assert channel.channel_type == "mask"
+        print(get_path(session, channel))
+
+
+def check_make_landmarks(session: Session, root_dir: Path):
+    api.make_landmarks(session, None, True)
+    images = get_imgs(session, None)
+    assert len(images) == 4
+    for image in images:
+        channel = (
+            session.execute(select_most_recent("make-landmarks", image))
+            .scalars()
+            .first()
+        )
+        assert isinstance(channel, sc.Channel)
+        assert channel.channel_type == "landmarks"
+        get_path(session, channel).write_text(eg_coords.to_cmtk())
 
 
 def check_align_masks(session: Session, root_dir: Path):
@@ -171,6 +204,8 @@ def test_api():
             check_add_more_raw(session, root_dir)
             check_segment_neuropil(session, root_dir)
             check_clean(session, root_dir)
+            check_select_most_recent(session)
+            check_make_landmarks(session, root_dir)
             mt_path.parent.mkdir(exist_ok=True, parents=True)
             nrrd.write(
                 str(mt_path),

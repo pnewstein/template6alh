@@ -9,7 +9,7 @@ from pathlib import Path
 import logging
 
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import select, inspect
+from sqlalchemy import select, inspect, Select
 from sqlalchemy.exc import NoResultFound
 import numpy as np
 import nrrd
@@ -295,3 +295,20 @@ def get_mask_template_path(session: Session) -> Path:
     if not template_path.exists():
         raise CannotFindTemplate()
     return template_path
+
+
+def select_most_recent(
+    step_name: str, image: Image, base_select: Select | None = None
+) -> Select:
+    """
+    returns a select statment that joins an input chananel, its producer, and its image sorted by runtime and filtered by image and step name
+    """
+    if base_select is None:
+        base_select = Select(Channel)
+    return (
+        base_select.join(AnalysisStep, Channel.producer)
+        .filter(AnalysisStep.function == step_name)
+        .join(Image, Channel.image)
+        .filter(Image.folder == image.folder)
+        .order_by(AnalysisStep.runtime.desc())
+    )
