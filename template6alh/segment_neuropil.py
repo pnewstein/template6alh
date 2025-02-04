@@ -10,7 +10,7 @@ import numpy as np
 from skimage import morphology, restoration, filters, measure, measure
 from scipy import ndimage as ndi
 
-logger = logging.getLogger("template6alh")
+logger = logging.getLogger(__name__)
 
 default_args_make_neuropil_mask = {
     "new_scale": 0.5,

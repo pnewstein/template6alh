@@ -2,7 +2,7 @@ import logging.config
 
 from .utils import get_logfile_path
 
-logger = logging.getLogger("template6alh")
+logger = logging.getLogger(__name__)
 
 logging_config = {
     "version": 1,

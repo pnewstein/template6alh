@@ -20,7 +20,7 @@ from matplotlib.backend_bases import MouseEvent
 
 from .utils import get_spacings
 
-logger = getLogger("template6alh")
+logger = getLogger(__name__)
 
 Coords: TypeAlias = tuple[int, float, float]
 

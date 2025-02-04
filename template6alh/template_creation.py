@@ -29,7 +29,7 @@ from .sql_utils import (
 from .utils import get_cmtk_executable, FlipLiteral, run_with_logging, get_target_grid
 from . import matplotlib_slice, api
 
-logger = getLogger("template6alh")
+logger = getLogger(__name__)
 
 
 def landmark_align(

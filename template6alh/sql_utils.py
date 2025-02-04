@@ -24,7 +24,7 @@ from .execptions import (
     InvalidStepError,
 )
 
-logger = logging.getLogger("template6alh")
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)

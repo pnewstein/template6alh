@@ -19,7 +19,7 @@ import click
 from .execptions import ChannelValidationError
 
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 FlipLiteral = Literal[
     "000",

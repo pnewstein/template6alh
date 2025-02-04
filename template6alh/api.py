@@ -50,7 +50,7 @@ from .utils import (
 )
 from .matplotlib_slice import get_slicer, ImageSlicer, write_landmarks
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 def get_paths(session: Session, db_path: Path | None) -> dict[str, Path]:
