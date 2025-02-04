@@ -58,7 +58,8 @@ class CoordsSet:
 
 
 class CoordsCallback(Protocol):
-    def __call__(self, coords_set: CoordsSet): ...
+    def __call__(self, coords_set: CoordsSet):
+        ...
 
 
 class ImageSlicer(QMainWindow):
