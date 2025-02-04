@@ -6,7 +6,8 @@ from pathlib import Path
 
 
 class InvalidStepError(Exception):
-    pass
+    def __str__(self):
+        return f"Error {self.__class__.__name__} {super().__str__()}"
 
 
 class BadImageFolder(InvalidStepError):
