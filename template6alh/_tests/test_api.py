@@ -233,18 +233,18 @@ def check_groupwise_template(session: Session, root_dir: Path):
 
 
 def check_reformat_fasii(session: Session, root_dir: Path):
-    return
     template_creation.reformat_fasii(session, None)
     paths = list(root_dir.glob("**/*mask_warped_fasii.nrrd"))
     path = paths[0]
     header = nrrd.read_header(str(path))
     assert np.array_equal(header["space directions"], np.diag([1, 1, 1]))
     image = (
-        session.execute(select(sc.Channel).filter(sc.Channel.channel_type == "image"))
+        session.execute(select(sc.Channel).filter(sc.Channel.channel_type == "aligned"))
         .scalars()
-        .first()
+        .all()
     )
-    assert image.number == 1
+    assert len(image) == 2
+    assert False
 
 
 def test_template():
@@ -269,6 +269,4 @@ def test_template():
             check_make_landmarks(session, root_dir)
             check_landmark_align(session, root_dir)
             check_groupwise_template(session, root_dir)
-            # api.mask_affine(session, None)
-            # api.align_to_mask(session, None)
             check_reformat_fasii(session, root_dir)

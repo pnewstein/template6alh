@@ -17,9 +17,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, Session
 
-ChannelType = Literal[
-    "mask", "raw", "aligned", "aligned-mask", "xform", "image", "landmarks"
-]
+ChannelType = Literal["mask", "raw", "aligned", "aligned-mask", "xform", "landmarks"]
 
 
 class Base(DeclarativeBase):

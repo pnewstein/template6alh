@@ -153,38 +153,37 @@ def reformat_fasii(session: Session, image_paths: list[str] | None):
     """
     takes all of the raw channels and warp masks and reformats the fasII chan
     accoring to that mask
+
+    calls api.mask-register
     """
+    api.mask_register(session, image_paths)
     images = get_imgs(session, image_paths)
     warp_fasiis: list[tuple[Channel, Channel]] = []
+    FasiiRaw = aliased(Channel)
     for image in images:
         neuropil_chan_number = image.raw_file.fasii_chan
-        assert neuropil_chan_number is not None
-        WarpXform = aliased(Channel)
-        AlignToMask = aliased(AnalysisStep)
-        FasiiRaw = aliased(Channel)
-        results = session.execute(
-            select(AlignToMask, WarpXform, FasiiRaw)
-            .filter(AlignToMask.function == "align-to-mask")
-            .join(WarpXform, AlignToMask.output_channels)
-            .filter(WarpXform.channel_type == "xform")
-            .join(Image, WarpXform.image)
-            .filter(Image.folder == image.folder)
+        stmt = (
+            select_most_recent("mask-register", image, select(Channel, FasiiRaw))
+            .join(ChannelMetadata, Channel.mdata)
+            .filter(
+                ChannelMetadata.key == "xform-type",
+                ChannelMetadata.value == "warp",
+            )
             .join(FasiiRaw, Image.channels)
             .filter(FasiiRaw.number == neuropil_chan_number)
             .filter(FasiiRaw.channel_type == "raw")
-            .order_by(AlignToMask.runtime.desc())
-        ).all()
-        if len(results) == 0:
+        )
+        result = session.execute(stmt).first()
+        if result is None:
             logger.warning("No results for image %s", image.folder)
             continue
-        all_raw_chans = [r[2] for r in results]
-        assert len(set(all_raw_chans)) == len(all_raw_chans)
-        _, warp, fasii = results[0]
+        warp, fasii = result
+        assert fasii.channel_type == "raw"
         warp_fasiis.append((warp, fasii))
     if len(warp_fasiis) == 0:
         raise InvalidStepError("No images to process")
     for input_channels in warp_fasiis:
-        check_progress(session, input_channels, 3)
+        check_progress(session, input_channels, 4)
     for warp, fasii in warp_fasiis:
         target_grid = get_target_grid(get_path(session, fasii))
         step = AnalysisStep()
@@ -196,9 +195,9 @@ def reformat_fasii(session: Session, image_paths: list[str] | None):
         chan_number = fasii.image.raw_file.fasii_chan
         assert chan_number is not None
         warp_aligned.number = chan_number
-        warp_aligned.channel_type = "image"
+        warp_aligned.channel_type = "aligned"
         perform_analysis_step(
-            session, step, [warp, fasii], [warp_aligned], 3, copy_scale=True
+            session, step, [warp, fasii], [warp_aligned], 4, copy_scale=True
         )
         run_with_logging(
             (
@@ -217,6 +216,9 @@ def reformat_fasii(session: Session, image_paths: list[str] | None):
 
 
 def write_landmarks(session: Session):
+    """
+    opens a gui to write landmarks for the template path to disk
+    """
     config_dict = ConfigDict(session)
     in_path = Path(config_dict["mask_template_path"])
     if not in_path.exists():

@@ -338,7 +338,6 @@ def view(
         slicer.quit()
 
 
-
 @main.group(help="Commands for creating a template image")
 @click.pass_context
 def template(ctx: click.Context):
@@ -396,8 +395,6 @@ def landmark_align(
         except InvalidStepError as e:
             click.echo(e)
             sys.exit(1)
-
-
 
 
 @template.command(
