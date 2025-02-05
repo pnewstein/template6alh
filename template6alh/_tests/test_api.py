@@ -138,70 +138,37 @@ def check_landmark_register(session: Session, root_dir: Path):
         assert channel.channel_type == "xform"
 
 
-def check_align_masks(session: Session, root_dir: Path):
-    return
-    api.segment_neuropil(session, ["002"], None, None, None)
-    api.mask_affine(session, ["002"])
-    assert len(list(root_dir.glob("**/*affine_*.xform"))) != 0
-    assert len(list(root_dir.glob("**/*reformat_*.nrrd"))) != 0
-    session.commit()
-    xforms = (
-        session.execute(select(sc.Channel).filter(sc.Channel.channel_type == "xform"))
+def check_mask_register(session: Session, root_dir: Path):
+    api.mask_register(session, ["002"])
+    assert len(list(root_dir.glob("**/*affine_mask.xform"))) != 0
+    assert len(list(root_dir.glob("**/*warp_mask.xform"))) != 0
+    (image,) = get_imgs(session, ["002"])
+    results = (
+        session.execute(
+            select_most_recent("mask-register", image)
+            .join(sc.ChannelMetadata, sc.Channel.mdata)
+            .filter(
+                sc.ChannelMetadata.key == "xform-type",
+                sc.ChannelMetadata.value == "warp",
+            )
+        )
         .scalars()
         .all()
     )
-    assert len(xforms) != 0
-    for xform in xforms:
-        path = get_path(session, xform)
-        assert path.exists()
-    unflip_producer = aliased(sc.AnalysisStep)
-    xform_chan = aliased(sc.Channel)
-    best_mask = aliased(sc.Channel)
-    unflip_mask = aliased(sc.Channel)
-    unflip_mask_mdata = aliased(sc.ChannelMetadata)
-    best_00 = session.execute(
-        select(sc.Channel, xform_chan, unflip_mask)
-        .join(sc.ChannelMetadata, sc.Channel.mdata)
-        .filter(
-            sc.ChannelMetadata.key == "best-flip", sc.ChannelMetadata.value == "yes"
+    assert len(results) == 1
+    results = (
+        session.execute(
+            select_most_recent("mask-register", image)
+            .join(sc.ChannelMetadata, sc.Channel.mdata)
+            .filter(
+                sc.ChannelMetadata.key == "xform-type",
+                sc.ChannelMetadata.value == "affine",
+            )
         )
-        .join(sc.Image, sc.Channel.image)
-        .filter(sc.Image.folder == "002")
-        .join(sc.AnalysisStep, sc.Channel.producer)
-        .join(xform_chan, sc.AnalysisStep.output_channels)
-        .filter(xform_chan.channel_type == "xform")
-        .join(best_mask, sc.AnalysisStep.input_channels)
-        .join(unflip_producer, best_mask.producer)
-        .join(unflip_mask, unflip_producer.output_channels)
-        .join(unflip_mask_mdata, unflip_mask.mdata)
-        .filter(unflip_mask_mdata.key == "flip", unflip_mask_mdata.value == "000")
-        .order_by(sc.AnalysisStep.runtime.desc())
-    ).all()
-    assert len(best_00) == 1
-    b = best_00[0]
-    assert "neuropil_mask_000" in b[2].path
-    assert "affine" in b[1].path
-    bad_00 = session.execute(
-        select(sc.Channel)
-        .join(sc.ChannelMetadata, sc.Channel.mdata)
-        .filter(sc.ChannelMetadata.key == "best-flip", sc.ChannelMetadata.value == "no")
-    ).all()
-    assert len(bad_00) == 7
-
-
-def check_align_to_mask(session: Session, root_dir):
-    return
-    api.align_to_mask(session, ["002"])
-    (warped,) = (root_dir / "002").glob("*warp_mask.xform")
-    ((_, chan),) = session.execute(
-        select(sc.AnalysisStep, sc.Channel)
-        .join(sc.Channel, sc.AnalysisStep.output_channels)
-        .filter(sc.AnalysisStep.function == "align-to-mask")
-    ).all()
-    assert isinstance(chan, sc.Channel)
-    assert chan.image.folder == "002"
-    assert chan.channel_type == "xform"
-    assert warped.exists()
+        .scalars()
+        .all()
+    )
+    assert len(results) == 1
 
 
 def test_api():
@@ -229,8 +196,7 @@ def test_api():
             )
             mt_path.with_suffix(".landmarks").write_text(eg_coords.to_cmtk())
             check_landmark_register(session, root_dir)
-            check_align_masks(session, root_dir)
-            check_align_to_mask(session, root_dir)
+            check_mask_register(session, root_dir)
 
 
 def check_landmark_align(session: Session, root_dir: Path):

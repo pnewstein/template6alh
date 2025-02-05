@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 import logging
 
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, aliased
 from sqlalchemy import select, inspect, Select
 from sqlalchemy.exc import NoResultFound
 import numpy as np
@@ -323,3 +323,21 @@ def select_most_recent(
         .filter(Image.folder == image.folder)
         .order_by(AnalysisStep.runtime.desc())
     )
+
+
+def select_recent_landmark_xform_and_mask(
+    image: Image,
+) -> Select[tuple[Channel, Channel]]:
+    """
+    used a few times to get both the mask and the xform for landmark xform
+    """
+    MaskChan = aliased(Channel)
+    MakeLandmarks = aliased(AnalysisStep)
+    Landmarks = aliased(Channel)
+    stmt = (
+        select_most_recent("landmark-register", image, select(Channel, MaskChan))
+        .join(Landmarks, AnalysisStep.input_channels)
+        .join(MakeLandmarks, Landmarks.producer)
+        .join(MaskChan, MakeLandmarks.input_channels)
+    )
+    return stmt

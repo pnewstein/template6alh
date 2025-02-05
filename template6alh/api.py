@@ -37,6 +37,7 @@ from .sql_utils import (
     get_mask_template_path,
     ConfigDict,
     select_most_recent,
+    select_recent_landmark_xform_and_mask,
 )
 from .execptions import NoRawData, InvalidStepError
 from .utils import (
@@ -317,270 +318,94 @@ def landmark_register(session: Session, image_paths: list[str] | None):
         channels.append(channel_or_none)
     if len(channels) == 0:
         raise InvalidStepError("No images found")
-    for channel in channels:
-        check_progress(session, [channel], 3)
-    for channel in channels:
-        out_channel = Channel()
-        out_channel.channel_type = "xform"
-        out_channel.path = "landmark.xform"
+    for landmark in channels:
+        check_progress(session, [landmark], 3)
+    for landmark in channels:
+        xform = Channel()
+        xform.channel_type = "xform"
+        xform.path = "landmark.xform"
         step = AnalysisStep()
         step.function = "landmark-register"
         step.kwargs = "{}"
         step.runtime = datetime.now()
-        perform_analysis_step(
-            session, step, [channel], [out_channel], 3, copy_scale=True
-        )
+        perform_analysis_step(session, step, [landmark], [xform], 3, copy_scale=True)
         get_landmark_affine(
-            get_path(session, channel),
+            get_path(session, landmark),
             template_landmarks,
-            get_path(session, out_channel),
+            get_path(session, xform),
         )
     session.commit()
 
 
 # TODO allow kwargs
-def mask_affine(session: Session, image_paths: list[str] | None):
+def mask_register(session: Session, image_paths: list[str] | None):
     """
-    alignes all of the templates masks
+    registers all of the templates masks
     """
     validate_db(session)
     template_path, _ = get_mask_template_path(session)
     images = get_imgs(session, image_paths)
-    channels_flips: list[tuple[Channel, FlipLiteral]] = []
+    xform_masks: list[tuple[Channel, Channel]] = []
     for image in images:
-        # if image.progress < 1:
-        # raise SkippingStep(3, image.progress)
-        channels_cmetadata = session.execute(
-            select(Channel, ChannelMetadata)
-            .join(ChannelMetadata, Channel.mdata)
-            .join(AnalysisStep, Channel.producer)
-            .join(Image, Channel.image)
-            .filter(Image.id == image.id)
-            .filter(AnalysisStep.function == "make-neuropil-mask")
-            .filter(ChannelMetadata.key == "flip")
-            .order_by(AnalysisStep.runtime.desc())
-        ).all()
-        # get flips
-        visteded_flips: set[str] = set()
-        for channel, chan_mdata in channels_cmetadata:
-            if chan_mdata.value in visteded_flips:
-                continue
-            visteded_flips.add(chan_mdata.value)
-            channels_flips.append((channel, chan_mdata.value))
-    assert len(set(channels_flips)) == len(channels_flips)
+        xform_mask = session.execute(
+            select_recent_landmark_xform_and_mask(image)
+        ).first()
+        if xform_mask is None:
+            logger.warning("could not find a best flip for image %s", image.folder)
+            continue
+        xform, mask = xform_mask
+        assert mask.channel_type == "mask"
+        assert xform.channel_type == "xform"
+        xform_masks.append((xform, mask))
     # allert to errors first
-    for channel, _ in channels_flips:
-        _ = check_progress(session, [channel], 2)
-    image_map_reformated: dict[Image, list[Channel]] = {i: [] for i in images}
-    for channel, flip in channels_flips:
-        # get no_flip channel:
-        sister_channels = channel.producer.output_channels
-        no_flip_channels = [
-            c
-            for c in sister_channels
-            if "000" == next(m.value for m in c.mdata if m.key == "flip")
-        ]
-        input_path = get_path(session, channel)
-        if len(no_flip_channels) != 1:
-            raise InvalidStepError(f"cannot find zero flip for {input_path}")
-        # figure out inital xform
+    for input_channels in xform_masks:
+        _ = check_progress(session, input_channels, 4)
+    # do two phase registration
+    for xform, mask in xform_masks:
+        # database update
         analysis_step = AnalysisStep()
-        analysis_step.function = "mask-affine"
+        analysis_step.function = "mask-register"
         analysis_step.kwargs = "{}"
         analysis_step.runtime = datetime.now()
         affine_xform_chan = Channel()
-        affine_xform_chan.path = f"affine_{flip}.xform"
+        affine_xform_chan.path = f"affine_mask.xform"
         affine_xform_chan.channel_type = "xform"
-        affine_xform_chan.mdata = [ChannelMetadata(key="flip", value=flip)]
-        affine_aligned_chan = Channel()
-        affine_aligned_chan.path = f"reformat_{flip}.nrrd"
-        affine_aligned_chan.channel_type = "mask"
-        affine_aligned_chan.mdata = [ChannelMetadata(key="flip", value=flip)]
-        perform_analysis_step(
-            session,
-            analysis_step,
-            [channel],
-            [affine_xform_chan, affine_aligned_chan],
-            2,
-            copy_scale=True,
-        )
-        with tempfile.TemporaryDirectory() as folder_str:
-            folder = Path(folder_str)
-            unfliped_path = get_path(session, no_flip_channels[0])
-            affine_xform_path = get_path(session, affine_xform_chan)
-            init_xform_path = folder / "init.xform"
-            run_with_logging(
-                (
-                    get_cmtk_executable("make_initial_affine"),
-                    "--centers-of-mass",
-                    template_path,
-                    input_path,
-                    init_xform_path,
-                )
-            )
-            run_with_logging(
-                (
-                    get_cmtk_executable("registration"),
-                    "--initial",
-                    init_xform_path,
-                    "--dofs",
-                    "6,9",
-                    "--auto-multi-levels",
-                    "2",
-                    # "-a",
-                    # "0.5",
-                    "-o",
-                    affine_xform_path,
-                    template_path,
-                    unfliped_path,
-                )
-            )
-        # Now register all images using affine
-        run_with_logging(
-            (
-                get_cmtk_executable("reformatx"),
-                "-o",
-                get_path(session, affine_aligned_chan),
-                "--nn",
-                "--floating",
-                unfliped_path,
-                template_path,
-                affine_xform_path,
-            )
-        )
-        image_map_reformated[affine_aligned_chan.image].append(affine_aligned_chan)
-    # evaluate xform quality
-    template, _ = nrrd.read(str(template_path))
-    template_mask = template == 254
-    max_score = 2 * template_mask.sum()
-    for image, channels in image_map_reformated.items():
-        channel_score: list[tuple[Channel, float]] = []
-        for channel in channels:
-            reformated, _ = nrrd.read(str(get_path(session, channel)))
-            sum_template_covered = (reformated[template_mask] > 0).sum()
-            sum_reformat_covered = (template[reformated > 0] > 128).sum()
-            assert not np.isnan(sum_reformat_covered)
-            assert not np.isnan(sum_template_covered)
-            channel.mdata.append(
-                ChannelMetadata(key="template-covered", value=str(sum_template_covered))
-            )
-            channel.mdata.append(
-                ChannelMetadata(key="reformat-covered", value=str(sum_reformat_covered))
-            )
-            score = (sum_template_covered + sum_reformat_covered) / max_score
-            channel.mdata.append(ChannelMetadata(key="score", value=str(score)))
-            channel_score.append((channel, score))
-        channel_score.sort(key=lambda e: e[1], reverse=True)
-        channel_score_repr = [(c.path, s) for c, s in channel_score]
-        logger.debug(f"scores are {channel_score_repr} ")
-        if channel_score[1][1] * 1.2 > channel_score[0][1]:
-            logger.warning(
-                f"Second best flip ({channel_score_repr[1][0]}) is "
-                f"quite close to best ({channel_score_repr[0][0]}) "
-            )
-        for i, (channel, _) in enumerate(channel_score):
-            if i == 0:
-                channel.mdata.append(ChannelMetadata(key="best-flip", value="yes"))
-            else:
-                channel.mdata.append(ChannelMetadata(key="best-flip", value="no"))
-    session.commit()
-
-
-def visualize_best_match(session, image_paths: list[str] | None):
-    """
-    visualizes the best match for each image
-    """
-    validate_db(session)
-    images = get_imgs(session, image_paths)
-    channels: list[Channel] = []
-    for image in images:
-        channel = (
-            session.execute(
-                select(Channel)
-                .join(ChannelMetadata, Channel.mdata)
-                .filter(
-                    ChannelMetadata.key == "best-flip", ChannelMetadata.value == "yes"
-                )
-                .join(Image, Channel.image)
-                .filter(Image.folder == image.folder)
-                .join(AnalysisStep, Channel.producer)
-                .order_by(AnalysisStep.runtime.desc())
-            )
-            .scalars()
-            .first()
-        )
-        if channel is None:
-            logger.warning("could not find a best flip for image %s", image.folder)
-        channels.append(channel)
-    slicers: list[ImageSlicer] = []
-    for channel in channels:
-        data, _ = nrrd.read(str(get_path(session, channel)))
-        slicers.append(get_slicer(data, channel.image.folder))
-    click.confirm("Close all windows?")
-    for slicer in slicers:
-        slicer.quit()
-
-
-def align_to_mask(session: Session, image_paths: list[str] | None):
-    """
-    Align the image to the mask template
-    """
-    validate_db(session)
-    template_path, _ = get_mask_template_path(session)
-    xform_mask: list[tuple[Channel, Channel]] = []
-    images = get_imgs(session, image_paths)
-    for image in images:
-        unflip_producer = aliased(AnalysisStep)
-        xform_chan = aliased(Channel)
-        best_mask = aliased(Channel)
-        unflip_mask = aliased(Channel)
-        unflip_mask_mdata = aliased(ChannelMetadata)
-        chan_xform_unflip = session.execute(
-            select(Channel, xform_chan, unflip_mask)
-            .join(ChannelMetadata, Channel.mdata)
-            .filter(ChannelMetadata.key == "best-flip", ChannelMetadata.value == "yes")
-            .join(Image, Channel.image)
-            .filter(Image.folder == image.folder)
-            .join(AnalysisStep, Channel.producer)
-            .join(xform_chan, AnalysisStep.output_channels)
-            .filter(xform_chan.channel_type == "xform")
-            .join(best_mask, AnalysisStep.input_channels)
-            .join(unflip_producer, best_mask.producer)
-            .join(unflip_mask, unflip_producer.output_channels)
-            .join(unflip_mask_mdata, unflip_mask.mdata)
-            .filter(unflip_mask_mdata.key == "flip", unflip_mask_mdata.value == "000")
-            .order_by(AnalysisStep.runtime.desc())
-        ).all()
-        n_hits = len(chan_xform_unflip)
-        if n_hits == 0:
-            raise InvalidStepError("missing channels")
-        logger.info("found %s matches for image %s", n_hits, image.folder)
-        _, xform, mask = chan_xform_unflip[0]
-        xform_mask.append((xform, mask))
-    for input_channels in xform_mask:
-        check_progress(session, input_channels, 3)
-    for xform, mask in xform_mask:
-        logger.warning(mask.image.folder)
-        analysis_step = AnalysisStep()
-        analysis_step.function = "align-to-mask"
-        analysis_step.kwargs = "{}"
-        analysis_step.runtime = datetime.now()
-        warp_mask_xform_chan = Channel()
-        warp_mask_xform_chan.path = "warp_mask.xform"
-        warp_mask_xform_chan.channel_type = "xform"
+        affine_xform_chan.mdata = [ChannelMetadata(key="xform-type", value="affine")]
+        warp_xform_chan = Channel()
+        warp_xform_chan.path = f"warp_mask.xform"
+        warp_xform_chan.channel_type = "xform"
+        warp_xform_chan.mdata = [ChannelMetadata(key="xform-type", value="warp")]
         perform_analysis_step(
             session,
             analysis_step,
             [xform, mask],
-            [warp_mask_xform_chan],
-            3,
+            [affine_xform_chan, warp_xform_chan],
+            4,
             copy_scale=True,
+        )
+        # Call cmtk
+        run_with_logging(
+            (
+                get_cmtk_executable("registration"),
+                "--initial",
+                get_path(session, xform),
+                "--dofs",
+                "6,9",
+                "--auto-multi-levels",
+                "2",
+                "-a",
+                "0.5",
+                "-o",
+                get_path(session, affine_xform_chan),
+                template_path,
+                get_path(session, mask),
+            )
         )
         run_with_logging(
             (
                 get_cmtk_executable("warp"),
                 "--outlist",
-                get_path(session, warp_mask_xform_chan),
+                get_path(session, warp_xform_chan),
                 "--grid-spacing",
                 "80",
                 "--fast",
@@ -597,7 +422,7 @@ def align_to_mask(session: Session, image_paths: list[str] | None):
                 "--ic-weight",
                 "0",
                 "--initial",
-                get_path(session, xform),
+                get_path(session, affine_xform_chan),
                 template_path,
                 get_path(session, mask),
             )

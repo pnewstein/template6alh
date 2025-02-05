@@ -24,6 +24,7 @@ from .sql_utils import (
     check_progress,
     ConfigDict,
     select_most_recent,
+    select_recent_landmark_xform_and_mask,
 )
 from .utils import get_cmtk_executable, FlipLiteral, run_with_logging, get_target_grid
 from . import matplotlib_slice, api
@@ -59,16 +60,9 @@ def landmark_align(
     api.landmark_register(session, image_paths)
     images = get_imgs(session, image_paths)
     for image in images:
-        MaskChan = aliased(Channel)
-        MakeLandmarks = aliased(AnalysisStep)
-        Landmarks = aliased(Channel)
-        stmt = (
-            select_most_recent("landmark-register", image, select(Channel, MaskChan))
-            .join(Landmarks, AnalysisStep.input_channels)
-            .join(MakeLandmarks, Landmarks.producer)
-            .join(MaskChan, MakeLandmarks.input_channels)
-        )
-        xform_mask_chan = session.execute(stmt).first()
+        xform_mask_chan = session.execute(
+            select_recent_landmark_xform_and_mask(image)
+        ).first()
         if xform_mask_chan is None:
             logger.warning("could not find a best flip for image %s", image.folder)
             continue
