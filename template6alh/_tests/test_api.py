@@ -244,7 +244,9 @@ def check_reformat_fasii(session: Session, root_dir: Path):
         .all()
     )
     assert len(image) == 2
-    assert False
+
+def check_fasii_template(session: Session, root_dir: Path):
+    template_creation.fasii_template(session, None)
 
 
 def test_template():
@@ -270,3 +272,4 @@ def test_template():
             check_landmark_align(session, root_dir)
             check_groupwise_template(session, root_dir)
             check_reformat_fasii(session, root_dir)
+            check_fasii_template(session, root_dir)

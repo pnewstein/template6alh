@@ -215,6 +215,75 @@ def reformat_fasii(session: Session, image_paths: list[str] | None):
     session.commit()
 
 
+def fasii_template(session: Session, image_paths: list[str] | None):
+    """
+    does a groupwise warp to create a fasII tempalate
+    """
+    api.mask_register(session, image_paths)
+    images = get_imgs(session, image_paths)
+    warpeds: list[Channel] = []
+    for image in images:
+        warped = (
+            session.execute(select_most_recent("reformat-fasii", image))
+            .scalars()
+            .first()
+        )
+        if warped is None:
+            logger.warning("No results for image %s", image.folder)
+            continue
+        warpeds.append(warped)
+    if len(warpeds) == 0:
+        raise InvalidStepError("No images to process")
+    prefix_dir = get_path(session, None)
+    run_with_logging(
+        [
+            get_cmtk_executable("groupwise_init"),
+            "-O",
+            prefix_dir / "groupwise/initial",
+            "-v",
+        ]
+        + [get_path(session, w) for w in warpeds]
+    )
+    run_with_logging(
+        (
+            "gunzip",
+            "-f",
+            prefix_dir / "groupwise/initial/groupwise.xforms.gz",
+        )
+    )
+    run_with_logging(
+        (
+            "groupwise_warp",
+            "--congeal",
+            "-O",
+            "groupwise/warp",
+            "-v",
+            "--match-histograms",
+            "--histogram-bins",
+            "32",
+            "--grid-spacing",
+            "40",
+            "--grid-spacing-fit",
+            "--refine-grid",
+            "5",
+            "--zero-sum-no-affine",
+            "--downsample-from",
+            "8",
+            "--downsample-to",
+            "1",
+            "--exploration",
+            "6.4",
+            "--accuracy",
+            "0.1",
+            "--force-background",
+            "0",
+            "--output-average",
+            "template.nrrd",
+            prefix_dir / "groupwise/initial/groupwise.xforms",
+        )
+    )
+
+
 def write_landmarks(session: Session):
     """
     opens a gui to write landmarks for the template path to disk

@@ -459,6 +459,37 @@ def reformat_fasii(
             click.echo(e)
             sys.exit(1)
 
+@template.command(
+    help="""
+    makes a template from mask reformated fasII images
+"""
+)
+@click.argument("image-folders", type=str, nargs=-1)
+@click.option(
+    "-f",
+    "--image-folders-file",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
+)
+@click.pass_context
+def fasii_template(
+    ctx: click.Context,
+    image_folders: list[str],
+    image_folders_file: str | None,
+):
+    ctx_dict = ctx.find_object(dict)
+    assert ctx_dict is not None
+    image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)
+    with Session(get_engine_with_context(ctx_dict)) as session:
+        try:
+            template_creation.fasii_template(
+                session,
+                image_paths=image_folders_or_none,
+            )
+        except InvalidStepError as e:
+            click.echo(e)
+            sys.exit(1)
 
 @template.command(
     help="""
