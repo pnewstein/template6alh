@@ -467,8 +467,7 @@ def validate_flip(ctx, param, value):
 
 @template.command(
     help="""
-Selects images for use in a template.
-Takes a list of folders names.
+    makes a template from the seleced images
 """
 )
 @click.argument("image-folders", type=str, nargs=-1)
@@ -479,48 +478,18 @@ Takes a list of folders names.
     default=None,
     help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
 )
-@click.option(
-    "--flip",
-    type=str,
-    callback=validate_flip,
-    help="axes to flip, eg '001' would mean flip the x axis, '101' would mean flip the z and the x",
-)
 @click.pass_context
-def select_images(
+def make_mask_template(
     ctx: click.Context,
     image_folders: list[str],
     image_folders_file: str | None,
-    flip: template_creation.FlipLiteral,
 ):
     ctx_dict = ctx.find_object(dict)
     assert ctx_dict is not None
     image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)
     with Session(get_engine_with_context(ctx_dict)) as session:
         try:
-            template_creation.select_images(
-                session,
-                image_paths=image_folders_or_none,
-                flip=flip,
-            )
-        except InvalidStepError as e:
-            click.echo(e)
-            sys.exit(1)
-
-
-@template.command(
-    help="""
-    makes a template from the seleced images
-"""
-)
-@click.pass_context
-def make_mask_template(
-    ctx: click.Context,
-):
-    ctx_dict = ctx.find_object(dict)
-    assert ctx_dict is not None
-    with Session(get_engine_with_context(ctx_dict)) as session:
-        try:
-            template_creation.iterative_mask_template(session)
+            template_creation.iterative_mask_template(session, image_folders_or_none)
         except InvalidStepError as e:
             click.echo(e)
             sys.exit(1)

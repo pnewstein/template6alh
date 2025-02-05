@@ -44,9 +44,11 @@ affine_xform {{
 }}"""
 
 
-def run_with_logging(args: Sequence[str | Path]) -> CompletedProcess[bytes]:
+def run_with_logging(
+    args: Sequence[str | Path], cwd: Path | None = None
+) -> CompletedProcess[bytes]:
     logger.info(" ".join(str(a) for a in args))
-    output = run(args, capture_output=True)
+    output = run(args, capture_output=True, cwd=cwd)
     std_err = output.stderr.decode()
     if std_err:
         logger.info(std_err)

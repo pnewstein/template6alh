@@ -19,7 +19,6 @@ from .execptions import InvalidStepError, BadImageFolder
 from .sql_utils import (
     perform_analysis_step,
     get_path,
-    save_channel_to_disk,
     validate_db,
     get_imgs,
     check_progress,
@@ -50,10 +49,11 @@ def landmark_align(
         # prevent error when getting path later on
         landmark_path.with_suffix(".nrrd").touch()
         landmark_path.write_text(
-            "25.0 20.0 50.0 brain\n25.0 20.0 50.0 sez\n35.0 170.0 50.0 tip"
+            "20.0 20.0 50.0 brain\n20.0 20.0 50.0 sez\n30.0 170.0 50.0 tip"
         )
+    config_dict["mask_template_landmarks_path"] = str(landmark_path.resolve())
     if target_grid is None:
-        target_grid = "80,451,200:0.5000,0.5000,0.5000"
+        target_grid = "90,450,250:0.5000,0.5000,0.5000"
     (match,) = re.finditer(r".*:(.+),(.+),(.+)", target_grid)
     z_str, y_str, x_str = match.groups()
     api.landmark_register(session, image_paths)
@@ -101,119 +101,58 @@ def landmark_align(
     session.commit()
 
 
-def select_images(session: Session, image_paths: list[str] | None, flip: FlipLiteral):
-    """
-    Selects images for template creation by rendering thoses images in normal coordinates. Uses image_paths and flip to select the right image
-    """
-    # get the right channels
-    if image_paths is None:
-        all_images = (
-            session.execute(
-                select(Image)
-                .join(Image.channels)
-                .join(Channel.mdata)
-                .filter(ChannelMetadata.key == "flip", ChannelMetadata.value == flip)
-            )
-            .unique()
-            .all()
-        )
-        if not all_images:
-            raise InvalidStepError(f"No images with flip {flip}")
-        image_paths = [i[0].folder for i in all_images]
-    query = (
-        select(ChannelMetadata, Channel, AnalysisStep)
-        .join(ChannelMetadata.channel)
-        .join(Channel.image)
-        .join(Channel.producer)
-        .options(
-            joinedload(ChannelMetadata.channel, Channel.producer),
-            joinedload(ChannelMetadata.channel, Channel.image),
-        )
-        .filter(ChannelMetadata.key == "flip", ChannelMetadata.value == flip)
-        .order_by(AnalysisStep.runtime.desc())
-    )
-    channels: list[Channel] = []
-    for image_path in image_paths:
-        result = session.execute(query.filter(Image.folder == image_path)).all()
-        if not result:
-            raise BadImageFolder(image_path)
-        channels.append(result[0][1])
-    # copy each channel data
-    for input_channel in channels:
-        step = AnalysisStep()
-        step.function = "select_images"
-        step.kwargs = repr({"flip": flip})
-        step.runtime = datetime.now()
-        output_channel = Channel()
-        output_channel.path = "for_template.nrrd"
-        output_channel.channel_type = "mask"
-        perform_analysis_step(
-            session, step, [input_channel], [output_channel], 1, copy_scale=True
-        )
-        # being flipped, we want the abs
-        output_channel.scalex = abs(output_channel.scalex)
-        output_channel.scaley = abs(output_channel.scaley)
-        output_channel.scalez = abs(output_channel.scalez)
-        assert output_channel.id is not None
-        data, _ = nrrd.read(str(get_path(session, input_channel)))
-        (flip_axs,) = np.where([int(v) for v in flip])
-        fliped_data = np.flip(data, flip_axs)
-        save_channel_to_disk(session, output_channel, fliped_data)
-    session.commit()
-
-
-def iterative_mask_template(session: Session, make_template=True):
+def iterative_mask_template(
+    session: Session, image_paths: list[str] | None, make_template=True
+):
     """
     takes previously selected templates and makes a groupwise template using cmtk
     """
+    if image_paths is None:
+        raise InvalidStepError("You must select images to be made into the template")
     validate_db(session)
-    stmt = (
-        select(AnalysisStep, Channel, Image)
-        .join(AnalysisStep.output_channels)
-        .join(Channel.image)
-        .filter(AnalysisStep.function == "select_images")
-        .order_by(AnalysisStep.runtime.desc())
-    )
-    results = session.execute(stmt).all()
-    visited_image_ids: set[int] = set()
+    images = get_imgs(session, image_paths)
     channels: list[Channel] = []
-    # make sure only the first of each image is added
-    for _, channel, image in results:
-        if image.id not in visited_image_ids:
-            visited_image_ids.add(image.id)
-            channels.append(channel)
+    for image in images:
+        reformat_chan = (
+            session.execute(select_most_recent("landmark-align", image))
+            .scalars()
+            .first()
+        )
+        if reformat_chan is None:
+            logger.warning("could not find a best flip for image %s", image.folder)
+            continue
+        channels.append(reformat_chan)
+    assert len(channels) != 0
     # make calls to cmtk
     sh_args = [get_cmtk_executable("iterative_shape_averaging")] + [
         get_path(session, c) for c in channels
     ]
     cwd = get_path(session, None)
-    template_dir = cwd / "template"
-    template_dir.mkdir(exist_ok=True)
+    # add path to config_dict
+    config_dict = ConfigDict(session)
+    if "mask_template_path" not in config_dict:
+        config_dict["mask_template_path"] = str(
+            Path(config_dict["mask_template_landmarks_path"]).with_suffix(".nrrd")
+        )
+    session.commit()
+    mask_path = Path(config_dict["mask_template_path"])
     if make_template:
-        result = run(sh_args, capture_output=True, check=False, cwd=cwd)
-        logger.info(result.stdout.decode())
-        logger.debug(result.stderr.decode())
-        result.check_returncode()
-        paths = list((cwd / "isa/pass5").glob("*for_template.nii.gz"))
+        run_with_logging(sh_args, cwd=cwd)
+        paths = list((cwd / "isa/pass5").glob("*landmark_reformat.nii.gz"))
         assert len(paths) != 0
         sh_args = [
             get_cmtk_executable("average_images"),
             "--outfile-name",
-            "template/mask_template.nrrd",
+            mask_path,
         ] + paths
-        result = run(sh_args, capture_output=True, check=False, cwd=cwd)
-        logger.info(result.stdout.decode())
-        logger.debug(result.stderr.decode())
-        result.check_returncode()
+        run_with_logging(sh_args, cwd=cwd)
     # postprocesses template
-    mask_template_path = template_dir / "mask_template.nrrd"
-    template, template_md = nrrd.read(str(mask_template_path))
+    assert mask_path.exists()
+    assert mask_path.stat().st_size > 1
+    template, template_md = nrrd.read(str(mask_path))
     template = template * (254 / template.max())
     template = template.astype(np.uint8)
-    nrrd.write(file=str(mask_template_path), data=template, header=template_md)
-    # add to database
-    ConfigDict(session)["mask_template_path"] = str(mask_template_path.resolve())
-    session.commit()
+    nrrd.write(file=str(mask_path), data=template, header=template_md)
 
 
 def reformat_fasii(session: Session, image_paths: list[str] | None):

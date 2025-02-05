@@ -154,6 +154,13 @@ class ConfigDict:
         if new_record:
             self.session.add(existing_record)
 
+    def __contains__(self, key: ConfigKey):
+        try:
+            self._exising_record_or_raise(key)
+            return True
+        except InvalidStepError:
+            return False
+
 
 def get_path(session: Session, record: Channel | Image | None) -> Path:
     """

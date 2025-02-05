@@ -16,7 +16,7 @@ from skimage.data import binary_blobs
 from template6alh import api, template_creation, matplotlib_slice
 from template6alh import sql_classes as sc
 from template6alh.utils import get_engine
-from template6alh.sql_utils import get_path, select_most_recent, get_imgs
+from template6alh.sql_utils import get_path, select_most_recent, get_imgs, ConfigDict
 
 logger = logging.getLogger()
 logger.setLevel("DEBUG")
@@ -248,23 +248,7 @@ def check_landmark_align(session: Session, root_dir: Path):
         assert channel.channel_type == "aligned-mask"
 
 
-def check_select_images(session: Session, root_dir: Path):
-    return
-    template_creation.select_images(session, None, "001")
-    image_dir = root_dir / "001"
-    new_file_list = list(image_dir.glob("*for_template.nrrd"))
-    assert len(new_file_list) == 1
-    new_file_channel = (
-        session.execute(select(sc.Channel).order_by(sc.Channel.id.desc()))
-        .scalars()
-        .first()
-    )
-    assert new_file_channel is not None
-    assert new_file_channel.producer.function == "select_images"
-
-
 def check_groupwise_template(session: Session, root_dir: Path):
-    return
     template_path = root_dir / "template/mask_template.nrrd"
     template_path.parent.mkdir(exist_ok=True)
     random_data = binary_blobs(
@@ -273,18 +257,13 @@ def check_groupwise_template(session: Session, root_dir: Path):
     nrrd.write(
         file=str(template_path), data=random_data.astype(np.float32), header=header
     )
-    template_creation.iterative_mask_template(session, make_template=False)
+    template_creation.iterative_mask_template(
+        session, ["001", "002"], make_template=False
+    )
+    template_path = ConfigDict(session)["mask_template_path"]
     data, _ = nrrd.read(str(template_path))
     assert data.max() == 254
     assert data.dtype == np.uint8
-    path_from_db = (
-        session.execute(
-            select(sc.GlobalConfig).filter(sc.GlobalConfig.key == "mask_template_path")
-        )
-        .scalar_one()
-        .value
-    )
-    assert Path(path_from_db).resolve() == template_path.resolve()
 
 
 def check_reformat_fasii(session: Session, root_dir: Path):
@@ -323,7 +302,6 @@ def test_template():
             api.segment_neuropil(session, None, None, None, None)
             check_make_landmarks(session, root_dir)
             check_landmark_align(session, root_dir)
-            check_select_images(session, root_dir)
             check_groupwise_template(session, root_dir)
             # api.mask_affine(session, None)
             # api.align_to_mask(session, None)
