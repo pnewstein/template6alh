@@ -257,7 +257,7 @@ def fasii_template(session: Session, image_paths: list[str] | None):
             "groupwise_warp",
             "--congeal",
             "-O",
-            "groupwise/warp",
+            prefix_dir / "groupwise/warp",
             "-v",
             "--match-histograms",
             "--histogram-bins",
