@@ -21,6 +21,7 @@ from .sql_utils import (
     get_path,
     validate_db,
     get_imgs,
+    get_mask_template_path,
     check_progress,
     ConfigDict,
     select_most_recent,
@@ -157,6 +158,7 @@ def reformat_fasii(session: Session, image_paths: list[str] | None):
     calls api.mask-register
     """
     api.mask_register(session, image_paths)
+    template_path, _ = get_mask_template_path(session)
     images = get_imgs(session, image_paths)
     warp_fasiis: list[tuple[Channel, Channel]] = []
     FasiiRaw = aliased(Channel)
@@ -185,7 +187,7 @@ def reformat_fasii(session: Session, image_paths: list[str] | None):
     for input_channels in warp_fasiis:
         check_progress(session, input_channels, 4)
     for warp, fasii in warp_fasiis:
-        target_grid = get_target_grid(get_path(session, fasii))
+        target_grid = get_target_grid(get_path(session, fasii), template_path)
         step = AnalysisStep()
         step.function = "reformat-fasii"
         step.kwargs = "{}"
@@ -219,8 +221,8 @@ def fasii_template(session: Session, image_paths: list[str] | None):
     """
     does a groupwise warp to create a fasII tempalate
     """
-    api.mask_register(session, image_paths)
     images = get_imgs(session, image_paths)
+    api.mask_register(session, image_paths)
     warpeds: list[Channel] = []
     for image in images:
         warped = (

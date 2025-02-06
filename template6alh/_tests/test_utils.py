@@ -5,6 +5,7 @@ tests functions
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from subprocess import run
+from logging import getLogger
 
 import nrrd
 import numpy as np
@@ -19,6 +20,18 @@ from template6alh.utils import (
     get_cmtk_executable,
 )
 from template6alh.matplotlib_slice import CoordsSet
+
+getLogger().setLevel("INFO")
+
+NO_FLIP = """! TYPEDSTREAM 2.4
+
+affine_xform {
+    xlate 0 0 0
+    rotate 0 0 0
+    scale 1 1 1
+    shear 0 0 0
+    center 0 0 0
+}"""
 
 
 def test_get_flip_xform():
@@ -53,14 +66,33 @@ def test_write_nhdrs():
 def test_get_target_grid():
     with TemporaryDirectory() as folder_str:
         folder = Path(folder_str)
-        path = folder / "out.nrrd"
-        data = np.zeros((10, 3, 100))
+        low_res = folder / "low_res.nrrd"
+        data = np.ones((10, 3, 100)).astype(np.uint8)
         header = {"spacings": [1, 2, 0.1]}
-        nrrd.write(str(path), data=data, header=header)
-        assert get_target_grid(path) == "10,3,100:1.0000,2.0000,0.1000"
-        header = {"space directions": np.diag([2, 20, 0.1])}
-        nrrd.write(str(path), data=data, header=header)
-        assert get_target_grid(path) == "10,3,100:2.0000,20.0000,0.1000"
+        nrrd.write(str(low_res), data=data, header=header)
+        high_res = folder / "high_res.nrrd"
+        header = {"spacings": [0.5, 0.1, 0.05]}
+        data = np.zeros((3, 3, 3)).astype(np.uint8)
+        nrrd.write(str(high_res), data=data, header=header)
+        target_grid = get_target_grid(high_res, low_res, False)
+        assert target_grid == "10,3,100:0.5000,0.1000,0.0500"
+        xform = folder / "none.xform"
+        xform.write_text(NO_FLIP)
+        run(
+            (
+                get_cmtk_executable("reformatx"),
+                "-o",
+                folder / "out.nrrd",
+                "--target-grid",
+                target_grid,
+                "--floating",
+                low_res,
+                xform,
+            )
+        )
+        data, md = nrrd.read(folder / "out.nrrd")
+        assert np.allclose(np.diag(md["space directions"]), header["spacings"])
+        assert data.min() == 1
 
 
 def mat_to_array(mat: bytes):

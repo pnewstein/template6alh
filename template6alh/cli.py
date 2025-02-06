@@ -459,6 +459,7 @@ def reformat_fasii(
             click.echo(e)
             sys.exit(1)
 
+
 @template.command(
     help="""
     makes a template from mask reformated fasII images
@@ -490,6 +491,7 @@ def fasii_template(
         except InvalidStepError as e:
             click.echo(e)
             sys.exit(1)
+
 
 @template.command(
     help="""

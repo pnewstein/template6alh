@@ -241,7 +241,7 @@ def get_spacings(metadata: dict) -> np.ndarray:
         return metadata["spacings"]
 
 
-def get_target_grid(path: Path) -> str:
+def get_target_grid(resulution_file: Path, range_file: Path, cubic_voxels=True) -> str:
     """
     reads a header from a nrrd file to get a target-grid string which is
     compatable with --target-grid option of reformatx
@@ -251,9 +251,14 @@ def get_target_grid(path: Path) -> str:
     def float_format(num) -> str:
         return f"{float(num):.4f}"
 
-    header = nrrd.read_header(str(path))
-    spacings = get_spacings(header)
-    sizes = header["sizes"]
+    resolution_header = nrrd.read_header(str(resulution_file))
+    spacings = get_spacings(resolution_header)
+    if cubic_voxels:
+        spacings = np.array([spacings.min()] * 3)
+    range_header = nrrd.read_header(str(range_file))
+    range_spacings = get_spacings(resolution_header)
+    range_size = range_header["sizes"]
+    sizes = np.round((range_spacings * range_size) / spacings).astype(int)
     return f"{','.join(str(s) for s in sizes)}:{','.join(float_format(s) for s in spacings)}"
 
 

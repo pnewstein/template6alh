@@ -245,6 +245,7 @@ def check_reformat_fasii(session: Session, root_dir: Path):
     )
     assert len(image) == 2
 
+
 def check_fasii_template(session: Session, root_dir: Path):
     template_creation.fasii_template(session, None)
 
