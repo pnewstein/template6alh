@@ -17,6 +17,7 @@ from PyQt5.QtCore import Qt
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backend_bases import MouseEvent
+from scipy import ndimage as ndi
 
 from .utils import get_spacings
 
@@ -61,18 +62,41 @@ class CoordsCallback(Protocol):
     def __call__(self, coords_set: CoordsSet): ...
 
 
+def proc_image(
+    image: np.ndarray, gamma: float | None, scale: tuple[float, float, float] | None
+) -> np.ndarray:
+    """
+    processes the image for easier visualization
+    """
+    image = np.rint((image.astype(float) / (255 * image.max()))).astype(np.uint8)
+    if scale is not None:
+        scale_array = np.array(scale).clip(0, 1)
+        logger.info("setting scale %s", scale_array)
+        image = ndi.zoom(image, scale_array)
+    if gamma is not None:
+        # look up table implementation based on _adjust_gamma_u8 from skimage.exposure
+        lut = np.rint(255 * (np.linspace(0, 1, 256) ** gamma)).astype(np.uint8)
+        image = lut[image]
+    return image
+
+
 class ImageSlicer(QMainWindow):
     def __init__(
         self,
         volume: np.ndarray,
         app: QApplication,
         click_generator: Generator[str, Coords, None] | None,
+        gamma: float | None = None,
+        scale: tuple[float, float, float] | None = None,
     ):
         """
-        a click_generator yeilds titles when
+        a click_generator yeilds titles when a click occurs
+        gamma is the gamma correction
+        scale is the fraction scale to use
         """
         super().__init__()
         # set volume dynamic range
+        self.volume = proc_image(volume, gamma, scale)
         self.volume = (volume * (254 / np.max(volume))).astype(np.uint8)
         self.app = app
         self.current_slice = 0
@@ -137,9 +161,14 @@ class ImageSlicer(QMainWindow):
         self.app.quit()
 
 
-def get_slicer(volume: np.ndarray, title: str) -> ImageSlicer:
+def get_slicer(
+    volume: np.ndarray,
+    title: str,
+    gamma: float | None,
+    scale: tuple[float, float, float] | None,
+) -> ImageSlicer:
     app = QApplication([])
-    slicer = ImageSlicer(volume, app, None)
+    slicer = ImageSlicer(volume, app, None, gamma=gamma, scale=scale)
     slicer.resize(800, 600)
     slicer.setWindowTitle(title)
     slicer.show()

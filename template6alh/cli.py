@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from . import api, template_creation, matplotlib_slice, sql_utils
 from .logger import logger
 from .execptions import InvalidStepError
-from .utils import get_engine_with_context, image_folders_from_file
+from .utils import get_engine_with_context, image_folders_from_file, get_spacings
 
 
 @click.group()
@@ -321,8 +321,12 @@ def mask_register(
 """
 )
 @click.argument("images", type=click.Path(exists=True, dir_okay=False), nargs=-1)
+@click.option("-g", "gamma", type=float, default=None)
+@click.option("-s", "scale", type=float, default=None)
 def view(
     images: list[str],
+    scale: float | None,
+    gamma: float | None
 ):
     slicers = []
     for image in images:
@@ -330,8 +334,9 @@ def view(
         if image_path.suffix not in (".nrrd", ".nhdr"):
             click.echo(f"{image_path} is not an nrrd", err=True)
             continue
-        data, _ = nrrd.read(image)
-        slicers.append(matplotlib_slice.get_slicer(data, image))
+        data, md = nrrd.read(image)
+        scale_frac = tuple((get_spacings(md) / scale).tolist())
+        slicers.append(matplotlib_slice.get_slicer(data, image, gamma=gamma, scale=scale_frac))
     click.confirm("Close all windows?")
     for slicer in slicers:
         slicer.quit()
