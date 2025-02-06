@@ -106,20 +106,3 @@ def realistic():
             landmark_affine,
         )
     )
-
-
-def get_good_rotation():
-    x = np.array([0.33333333, 0.4, 0.5])
-
-    def objective(x):
-        deg = x * 180
-
-        rot = Rotation.from_euler("XYZ", deg, degrees=True)
-
-        out_scale = np.array([0.4, 0.4, 0.4])
-        out_array = rot.apply(in_coords.to_array())
-        out_pix = out_array / out_scale
-        centered = out_pix
-        return np.abs(out_pix - np.round(out_pix)).sum()
-
-    results = differential_evolution(objective, x0=x, bounds=[(-1, 1)] * 3)

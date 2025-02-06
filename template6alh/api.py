@@ -8,12 +8,10 @@ from pathlib import Path
 from typing import Any
 from datetime import datetime
 import logging
-import tempfile
 
-from sqlalchemy.orm import Session, joinedload, aliased
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, Engine, inspect
 import nrrd
-import numpy as np
 import click
 
 from .segment_neuropil import make_neuropil_mask, default_args_make_neuropil_mask
@@ -46,10 +44,9 @@ from .utils import (
     get_logfile_path,
     get_cmtk_executable,
     run_with_logging,
-    FlipLiteral,
     get_landmark_affine,
 )
-from .matplotlib_slice import get_slicer, ImageSlicer, write_landmarks
+from .matplotlib_slice import ImageSlicer, write_landmarks
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +253,9 @@ def clean(session: Session):
 
 
 def make_landmarks(session: Session, image_paths: list[str] | None, skip=False):
+    """
+    uses a gui to get landmars from an image
+    """
     validate_db(session)
     images = get_imgs(session, image_paths)
     channels: list[Channel] = []

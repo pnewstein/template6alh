@@ -6,7 +6,7 @@ import logging
 import os
 from pathlib import Path
 import sys
-from typing import Literal, Sequence
+from typing import Sequence
 from subprocess import run, CompletedProcess
 
 import pandas as pd
@@ -20,28 +20,6 @@ from .execptions import ChannelValidationError
 
 
 logger = logging.getLogger(__name__)
-
-FlipLiteral = Literal[
-    "000",
-    "001",
-    "010",
-    "011",
-    "100",
-    "101",
-    "110",
-    "111",
-]
-
-
-flip_xform_template = """! TYPEDSTREAM 2.4
-
-affine_xform {{
-    xlate 0 0 0
-    rotate 0 0 0
-    scale {z} {y} {x}
-    shear 0 0 0
-    center 0 0 0
-}}"""
 
 
 def run_with_logging(
@@ -57,11 +35,6 @@ def run_with_logging(
         logger.info(std_out)
     output.check_returncode()
     return output
-
-
-def get_flip_xform(flip: FlipLiteral) -> str:
-    format = {k: -1 if v == "1" else 1 for v, k in zip(flip, "zyx")}
-    return flip_xform_template.format(**format)
 
 
 def get_cmtk_executable(tool: str) -> Path:

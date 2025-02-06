@@ -1,4 +1,4 @@
-from typing import Protocol, Generator, TypeAlias, Annotated
+from typing import Protocol, Generator, TypeAlias
 from dataclasses import dataclass
 from logging import getLogger
 from pathlib import Path
@@ -99,7 +99,7 @@ class ImageSlicer(QMainWindow):
         if self.click_generator is not None:
             message = next(self.click_generator)
             self.message.setText(message)
-            self.figure.canvas.mpl_connect("button_press_event", self.on_click)
+            self.figure.canvas.mpl_connect("button_press_event", self.on_click)  # type: ignore
 
         # Initialize plot
         self.update_slice(0)

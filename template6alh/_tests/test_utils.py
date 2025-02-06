@@ -14,7 +14,6 @@ from template6alh.utils import (
     validate_channels,
     get_engine_with_context,
     write_nhdrs,
-    get_flip_xform,
     get_target_grid,
     run_with_logging,
     get_cmtk_executable,
@@ -23,21 +22,15 @@ from template6alh.matplotlib_slice import CoordsSet
 
 getLogger().setLevel("INFO")
 
-NO_FLIP = """! TYPEDSTREAM 2.4
+NO_FLIP = """! TYPEDSTREAM 2.4 
 
-affine_xform {
-    xlate 0 0 0
-    rotate 0 0 0
-    scale 1 1 1
-    shear 0 0 0
-    center 0 0 0
-}"""
-
-
-def test_get_flip_xform():
-    string = get_flip_xform("011")
-    assert "-1" in string
-    assert "scale 1" in string
+affine_xform { 
+    xlate 0 0 0 
+    rotate 0 0 0 
+    scale 1 1 1 
+    shear 0 0 0 
+    center 0 0 0 
+}""" 
 
 
 def test_validate_channels():

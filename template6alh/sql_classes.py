@@ -4,18 +4,15 @@ This code contains the classes that are used for sqlqlqhenmy
 
 from typing import Literal
 from datetime import datetime
-from pathlib import Path
 
 from sqlalchemy import (
     String,
     Integer,
-    create_engine,
     ForeignKey,
-    select,
     Float,
     DateTime,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, Session
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 ChannelType = Literal["mask", "raw", "aligned", "aligned-mask", "xform", "landmarks"]
 
@@ -197,41 +194,3 @@ class AnalysisStepInput(Base):
         ForeignKey("analysis_step.id"), primary_key=True
     )
     channel_id: Mapped[int] = mapped_column(ForeignKey("channel.id"), primary_key=True)
-
-
-def test():
-    Path("db.db").unlink()
-    engine = create_engine("sqlite:///db.db", echo=True)
-    session = Session(engine)
-    Base.metadata.create_all(engine)
-    channels = select(DataChannel)
-    session.scalars(channels)
-    dirs = list(Path("/mnt/g/peter/eg_imgs").iterdir())
-    raw_data = RawFile(
-        path="raw.czi",
-        fasii_chan=1,
-        neuropil_chan=2,
-        images=[
-            Image(
-                progress=0,
-                folder=str(d.relative_to("/mnt/g/peter/eg_imgs")),
-                channels=[
-                    Channel(
-                        path=p.name,
-                        number=p.name[4],
-                        step_number=0,
-                        channel_type="raw",
-                        scalex=0.44,
-                        scaley=0.28231951,
-                        scalez=0.28231951,
-                    )
-                    for p in d.iterdir()
-                ],
-            )
-            for d in dirs
-        ],
-    )
-    global_config = GlobalConfig(key="prefix_dir", value="/mnt/g/peter/eg_imgs")
-    with Session(engine) as session:
-        session.add_all([raw_data, global_config])
-        session.commit()

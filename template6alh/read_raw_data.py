@@ -14,6 +14,9 @@ import numpy as np
 
 
 def read_test(path: Path) -> Generator[tuple[dict[str, Any], np.ndarray], None, None]:
+    """
+    generates test data in the same manner as read_czi
+    """
     _ = path
     metadata = {l: 1 for l in "CZYX"}
     for _ in range(2):

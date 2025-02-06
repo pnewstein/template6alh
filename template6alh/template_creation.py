@@ -4,18 +4,17 @@ API functions specificaly for template creations
 
 from datetime import datetime
 import re
-from subprocess import run
 from logging import getLogger
 from pathlib import Path
 
-from sqlalchemy.orm import Session, joinedload, aliased
+from sqlalchemy.orm import Session,  aliased
 from sqlalchemy import select
 import numpy as np
 import nrrd
 import click
 
-from .sql_classes import Channel, Image, AnalysisStep, ChannelMetadata, GlobalConfig
-from .execptions import InvalidStepError, BadImageFolder
+from .sql_classes import Channel, Image, AnalysisStep, ChannelMetadata
+from .execptions import InvalidStepError
 from .sql_utils import (
     perform_analysis_step,
     get_path,
@@ -27,7 +26,7 @@ from .sql_utils import (
     select_most_recent,
     select_recent_landmark_xform_and_mask,
 )
-from .utils import get_cmtk_executable, FlipLiteral, run_with_logging, get_target_grid
+from .utils import get_cmtk_executable, run_with_logging, get_target_grid
 from . import matplotlib_slice, api
 
 logger = getLogger(__name__)

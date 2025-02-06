@@ -5,7 +5,6 @@ defines the command line interface
 from pathlib import Path
 import json
 import sys
-from typing import get_args
 import nrrd
 
 import click
@@ -341,6 +340,7 @@ def view(
 @main.group(help="Commands for creating a template image")
 @click.pass_context
 def template(ctx: click.Context):
+    _ = ctx
     pass
 
 
