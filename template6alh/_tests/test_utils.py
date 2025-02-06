@@ -30,7 +30,7 @@ affine_xform {
     scale 1 1 1 
     shear 0 0 0 
     center 0 0 0 
-}""" 
+}"""
 
 
 def test_validate_channels():

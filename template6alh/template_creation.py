@@ -7,7 +7,7 @@ import re
 from logging import getLogger
 from pathlib import Path
 
-from sqlalchemy.orm import Session,  aliased
+from sqlalchemy.orm import Session, aliased
 from sqlalchemy import select
 import numpy as np
 import nrrd
@@ -299,3 +299,12 @@ def write_landmarks(session: Session):
     slicer = matplotlib_slice.write_landmarks(in_path, out_path)
     click.confirm("Close all windows?")
     slicer.quit()
+
+
+def advance_images(session: Session, image_paths: list[str] | None):
+    """
+    for testing purposes, advance the image progress
+    """
+    for image in get_imgs(session, image_paths):
+        image.progress = image.progress + 1
+    session.commit()
