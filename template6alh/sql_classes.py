@@ -15,6 +15,13 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 ChannelType = Literal["mask", "raw", "aligned", "aligned-mask", "xform", "landmarks"]
+FunctionName = Literal[
+    "make-landmarks",
+    "landmark-register",
+    "mask-register",
+    "landmark-align",
+    "reformat-fasii",
+]
 
 
 class Base(DeclarativeBase):
@@ -172,7 +179,7 @@ class AnalysisStep(Base):
 
     __tablename__ = "analysis_step"
     id: Mapped[int] = mapped_column(primary_key=True)
-    function: Mapped[str] = mapped_column(String, nullable=False)
+    function: Mapped[FunctionName] = mapped_column(String, nullable=False)
     kwargs: Mapped[str] = mapped_column(String, nullable=False)
     runtime: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     # relationships
