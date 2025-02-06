@@ -22,14 +22,14 @@ from template6alh.matplotlib_slice import CoordsSet
 
 getLogger().setLevel("INFO")
 
-NO_FLIP = """! TYPEDSTREAM 2.4 
+NO_FLIP = """! TYPEDSTREAM 2.4
 
-affine_xform { 
-    xlate 0 0 0 
-    rotate 0 0 0 
-    scale 1 1 1 
-    shear 0 0 0 
-    center 0 0 0 
+affine_xform {
+    xlate 0 0 0
+    rotate 0 0 0
+    scale 1 1 1
+    shear 0 0 0
+    center 0 0 0
 }"""
 
 
@@ -64,11 +64,11 @@ def test_get_target_grid():
         header = {"spacings": [1, 2, 0.1]}
         nrrd.write(str(low_res), data=data, header=header)
         high_res = folder / "high_res.nrrd"
-        header = {"spacings": [0.5, 0.1, 0.05]}
+        header = {"spacings": [0.5, 1, 0.05]}
         data = np.zeros((3, 3, 3)).astype(np.uint8)
         nrrd.write(str(high_res), data=data, header=header)
         target_grid = get_target_grid(high_res, low_res, False)
-        assert target_grid == "10,3,100:0.5000,0.1000,0.0500"
+        assert target_grid == "20,6,200:0.5000,1.0000,0.0500"
         xform = folder / "none.xform"
         xform.write_text(NO_FLIP)
         run(
@@ -85,7 +85,32 @@ def test_get_target_grid():
         )
         data, md = nrrd.read(folder / "out.nrrd")
         assert np.allclose(np.diag(md["space directions"]), header["spacings"])
-        assert data.min() == 1
+        assert data.mean() > 0.5
+        # This time test output
+        fine = folder / "fine.nrrd"
+        fine_header = {
+            "sizes": [28, 45, 25],
+            "space directions": [
+                (0.070600003004074097, 0, 0),
+                (0, 0.070600003004074097, 0),
+                (0, 0, 0.070600003004074097),
+            ],
+        }
+        fine_data = np.zeros(shape=tuple(fine_header["sizes"]))
+        nrrd.write(str(fine), data=fine_data, header=fine_header)
+        corse = folder / "corse.nrrd"
+        corse_header = {
+            "sizes": [9, 45, 25],
+            "space directions": [
+                (0.5, 0, 0),
+                (0, 0.5, 0),
+                (0, 0, 0.5),
+            ],
+        }
+        corse_data = np.zeros(shape=tuple(corse_header["sizes"]))
+        nrrd.write(str(corse), data=corse_data, header=corse_header)
+        target_grid = get_target_grid(fine, corse)
+        assert target_grid == "64,319,178:0.0706,0.0706,0.0706"
 
 
 def mat_to_array(mat: bytes):

@@ -229,9 +229,9 @@ def get_target_grid(resulution_file: Path, range_file: Path, cubic_voxels=True) 
     if cubic_voxels:
         spacings = np.array([spacings.min()] * 3)
     range_header = nrrd.read_header(str(range_file))
-    range_spacings = get_spacings(resolution_header)
+    range_spacings = get_spacings(range_header)
     range_size = range_header["sizes"]
-    sizes = np.round((range_spacings * range_size) / spacings).astype(int)
+    sizes = np.ceil((range_spacings * range_size) / spacings).astype(int)
     return f"{','.join(str(s) for s in sizes)}:{','.join(float_format(s) for s in spacings)}"
 
 
