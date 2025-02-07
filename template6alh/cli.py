@@ -323,11 +323,7 @@ def mask_register(
 @click.argument("images", type=click.Path(exists=True, dir_okay=False), nargs=-1)
 @click.option("-g", "gamma", type=float, default=None)
 @click.option("-s", "scale", type=float, default=None)
-def view(
-    images: list[str],
-    scale: float | None,
-    gamma: float | None
-):
+def view(images: list[str], scale: float | None, gamma: float | None):
     slicers = []
     for image in images:
         image_path = Path(image)
@@ -336,7 +332,9 @@ def view(
             continue
         data, md = nrrd.read(image)
         scale_frac = tuple((get_spacings(md) / scale).tolist())
-        slicers.append(matplotlib_slice.get_slicer(data, image, gamma=gamma, scale=scale_frac))
+        slicers.append(
+            matplotlib_slice.get_slicer(data, image, gamma=gamma, scale=scale_frac)
+        )
     click.confirm("Close all windows?")
     for slicer in slicers:
         slicer.quit()
