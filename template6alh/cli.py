@@ -30,7 +30,7 @@ from .utils import get_engine_with_context, image_folders_from_file, get_spacing
 @click.pass_context
 def main(ctx: click.Context, verbose: bool, database: str | None):
     ctx_dict = ctx.ensure_object(dict)
-    ctx_dict["database"] = database
+    ctx_dict["database"] = None if database is None else Path(database)
     if verbose:
         assert logger.parent is not None
         handler = next(h for h in logger.parent.handlers if h.name == "stderr")
