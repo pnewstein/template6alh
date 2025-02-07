@@ -221,7 +221,6 @@ def fasii_template(session: Session, image_paths: list[str] | None):
     does a groupwise warp to create a fasII tempalate
     """
     images = get_imgs(session, image_paths)
-    api.mask_register(session, image_paths)
     warpeds: list[Channel] = []
     for image in images:
         warped = (
@@ -254,7 +253,7 @@ def fasii_template(session: Session, image_paths: list[str] | None):
     )
     run_with_logging(
         (
-            "groupwise_warp",
+            get_cmtk_executable("groupwise_warp"),
             "--congeal",
             "-O",
             prefix_dir / "groupwise/warp",
