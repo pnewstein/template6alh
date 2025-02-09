@@ -351,7 +351,7 @@ def mask_register(session: Session, image_paths: list[str] | None):
             select_recent_landmark_xform_and_mask(image)
         ).first()
         if xform_mask is None:
-            logger.warning("could not find a best flip for image %s", image.folder)
+            logger.warning("could find image %s", image.folder)
             continue
         xform, mask = xform_mask
         assert mask.channel_type == "mask"
