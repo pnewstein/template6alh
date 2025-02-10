@@ -14,13 +14,24 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-ChannelType = Literal["mask", "raw", "aligned", "aligned-mask", "xform", "landmarks"]
+ChannelType = Literal[
+    "mask",
+    "raw",
+    "aligned",
+    "aligned-mask",
+    "xform",
+    "landmarks",
+    "image",
+]
 FunctionName = Literal[
     "make-landmarks",
     "landmark-register",
     "mask-register",
     "landmark-align",
     "reformat-fasii",
+    "reformat-fasii",
+    "select-neuropil-fasii",
+    "make-neuropil-mask",
 ]
 
 

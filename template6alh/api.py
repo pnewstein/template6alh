@@ -9,10 +9,12 @@ from typing import Any
 from datetime import datetime
 import logging
 
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, aliased
 from sqlalchemy import select, Engine, inspect
 import nrrd
 import click
+from scipy import ndimage as ndi
+import numpy as np
 
 from .segment_neuropil import make_neuropil_mask, default_args_make_neuropil_mask
 from .read_raw_data import read_czi, read_test
@@ -45,6 +47,7 @@ from .utils import (
     get_cmtk_executable,
     run_with_logging,
     get_landmark_affine,
+    get_target_grid,
 )
 from .matplotlib_slice import ImageSlicer, write_landmarks
 
@@ -232,6 +235,60 @@ def segment_neuropil(
         session.commit()
 
 
+def select_neuropil_fasii(session: Session, image_paths: list[str] | None):
+    """
+    uses a gui to get landmars from an image
+    """
+    validate_db(session)
+    images = get_imgs(session, image_paths)
+    FasiiRaw = aliased(Channel)
+    masks_fasiis: list[tuple[Channel, Channel]] = []
+    for image in images:
+        neuropil_chan_number = image.raw_file.fasii_chan
+        channels_or_none = session.execute(
+            select_most_recent("make-neuropil-mask", image, select(Channel, FasiiRaw))
+            .join(FasiiRaw, Image.channels)
+            .filter(FasiiRaw.number == neuropil_chan_number)
+            .filter(FasiiRaw.channel_type == "raw")
+        ).first()
+        if channels_or_none is None:
+            logger.warning("no channel for image %s", image.folder)
+            continue
+        mask, fasii = channels_or_none
+        assert mask.channel_type == "mask"
+        assert fasii.channel_type == "raw"
+        masks_fasiis.append((mask, fasii))
+    if len(masks_fasiis) == 0:
+        raise InvalidStepError("No images found")
+    for input_channels in masks_fasiis:
+        check_progress(session, input_channels, 1)
+    for mask, fasii in masks_fasiis:
+        step = AnalysisStep()
+        step.function = "select-neuropil-fasii"
+        step.kwargs = "{}"
+        step.runtime = datetime.now()
+        masked_fasii = Channel()
+        masked_fasii.path = "neuropil_fasii.nrrd"
+        chan_number = fasii.image.raw_file.fasii_chan
+        assert chan_number is not None
+        masked_fasii.number = chan_number
+        masked_fasii.channel_type = "image"
+        perform_analysis_step(
+            session, step, [mask, fasii], [masked_fasii], 1, copy_scale=True
+        )
+        mask_data, _ = nrrd.read(str(get_path(session, mask)))
+        fasii_data, fasii_md = nrrd.read(str(get_path(session, fasii)))
+        scale_frac = np.array(fasii_data.shape) / np.array(mask_data.shape)
+        # get_spacings(mask_md) / get_spacings(fasii_md)
+        rescaled_mask_data = ndi.zoom(mask_data, scale_frac, order=0)
+        assert rescaled_mask_data.shape == fasii_data.shape, "resize failed"
+        # out_data = fasii_data * rescaled_mask_data
+        out_data = fasii_data.copy()
+        out_data[~rescaled_mask_data.astype(bool)] = 0
+        nrrd.write(str(get_path(session, masked_fasii)), out_data, header=fasii_md)
+    session.commit()
+
+
 def clean(session: Session):
     """
     removes all files from database which are no longer on the disk
@@ -340,28 +397,34 @@ def landmark_register(session: Session, image_paths: list[str] | None):
 # TODO allow kwargs
 def mask_register(session: Session, image_paths: list[str] | None):
     """
-    registers all of the templates masks
+    registers all of the templates masks also reformat fasii image
     """
     validate_db(session)
     template_path, _ = get_mask_template_path(session)
     images = get_imgs(session, image_paths)
-    xform_masks: list[tuple[Channel, Channel]] = []
+    xforms_masks_fasiis: list[tuple[Channel, Channel, Channel]] = []
     for image in images:
         xform_mask = session.execute(
             select_recent_landmark_xform_and_mask(image)
         ).first()
-        if xform_mask is None:
+        fasii = (
+            session.execute(select_most_recent("select-neuropil-fasii", image))
+            .scalars()
+            .first()
+        )
+        if xform_mask is None or fasii is None:
             logger.warning("could find image %s", image.folder)
             continue
         xform, mask = xform_mask
         assert mask.channel_type == "mask"
         assert xform.channel_type == "xform"
-        xform_masks.append((xform, mask))
+        assert fasii.channel_type == "image"
+        xforms_masks_fasiis.append((xform, mask, fasii))
     # allert to errors first
-    for input_channels in xform_masks:
+    for input_channels in xforms_masks_fasiis:
         _ = check_progress(session, input_channels, 4)
     # do two phase registration
-    for xform, mask in xform_masks:
+    for xform, mask, fasii in xforms_masks_fasiis:
         # database update
         analysis_step = AnalysisStep()
         analysis_step.function = "mask-register"
@@ -375,14 +438,21 @@ def mask_register(session: Session, image_paths: list[str] | None):
         warp_xform_chan.path = f"warp_mask.xform"
         warp_xform_chan.channel_type = "xform"
         warp_xform_chan.mdata = [ChannelMetadata(key="xform-type", value="warp")]
+        warp_aligned = Channel()
+        warp_aligned.path = "mask_warped_fasii.nrrd"
+        chan_number = fasii.image.raw_file.fasii_chan
+        assert chan_number is not None
+        warp_aligned.number = chan_number
+        warp_aligned.channel_type = "aligned"
         perform_analysis_step(
             session,
             analysis_step,
-            [xform, mask],
-            [affine_xform_chan, warp_xform_chan],
+            [xform, mask, fasii],
+            [affine_xform_chan, warp_xform_chan, warp_aligned],
             4,
             copy_scale=True,
         )
+        target_grid = get_target_grid(get_path(session, fasii), template_path)
         # Call cmtk
         run_with_logging(
             (
@@ -425,6 +495,19 @@ def mask_register(session: Session, image_paths: list[str] | None):
                 get_path(session, affine_xform_chan),
                 template_path,
                 get_path(session, mask),
+            )
+        )
+        run_with_logging(
+            (
+                get_cmtk_executable("reformatx"),
+                "-o",
+                get_path(session, warp_aligned),
+                "--target-grid",
+                target_grid,
+                "--linear",
+                "--floating",
+                get_path(session, fasii),
+                get_path(session, warp_xform_chan),
             )
         )
     session.commit()

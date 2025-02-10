@@ -287,7 +287,7 @@ def landmark_register(
 
 @main.command(
     help="""
-    Alignes mask to template mask with affine xform and selects the best flip
+    registers all of the templates masks also reformat fasii image
 """
 )
 @click.argument("image-folders", type=str, nargs=-1)
@@ -338,6 +338,39 @@ def view(images: list[str], scale: float | None, gamma: float | None):
     click.confirm("Close all windows?")
     for slicer in slicers:
         slicer.quit()
+
+
+@main.command(
+    help="""
+    mask fasII raw with neuropil mask
+"""
+)
+@click.argument("image-folders", type=str, nargs=-1)
+@click.option(
+    "-f",
+    "--image-folders-file",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
+)
+@click.pass_context
+def select_neuropil_fasii(
+    ctx: click.Context,
+    image_folders: list[str],
+    image_folders_file: str | None,
+):
+    ctx_dict = ctx.find_object(dict)
+    assert ctx_dict is not None
+    image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)
+    with Session(get_engine_with_context(ctx_dict)) as session:
+        try:
+            api.select_neuropil_fasii(
+                session,
+                image_paths=image_folders_or_none,
+            )
+        except InvalidStepError as e:
+            click.echo(e)
+            sys.exit(1)
 
 
 @main.group(help="Commands for creating a template image")
@@ -425,39 +458,6 @@ def make_mask_template(
     with Session(get_engine_with_context(ctx_dict)) as session:
         try:
             template_creation.iterative_mask_template(session, image_folders_or_none)
-        except InvalidStepError as e:
-            click.echo(e)
-            sys.exit(1)
-
-
-@template.command(
-    help="""
-    reformats fasII to mask template
-"""
-)
-@click.argument("image-folders", type=str, nargs=-1)
-@click.option(
-    "-f",
-    "--image-folders-file",
-    type=click.Path(exists=True, dir_okay=False),
-    default=None,
-    help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
-)
-@click.pass_context
-def reformat_fasii(
-    ctx: click.Context,
-    image_folders: list[str],
-    image_folders_file: str | None,
-):
-    ctx_dict = ctx.find_object(dict)
-    assert ctx_dict is not None
-    image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)
-    with Session(get_engine_with_context(ctx_dict)) as session:
-        try:
-            template_creation.reformat_fasii(
-                session,
-                image_paths=image_folders_or_none,
-            )
         except InvalidStepError as e:
             click.echo(e)
             sys.exit(1)

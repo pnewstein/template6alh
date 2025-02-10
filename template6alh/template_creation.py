@@ -149,73 +149,6 @@ def iterative_mask_template(
     nrrd.write(file=str(mask_path), data=template, header=template_md)
 
 
-def reformat_fasii(session: Session, image_paths: list[str] | None):
-    """
-    takes all of the raw channels and warp masks and reformats the fasII chan
-    accoring to that mask
-
-    calls api.mask-register
-    """
-    api.mask_register(session, image_paths)
-    template_path, _ = get_mask_template_path(session)
-    images = get_imgs(session, image_paths)
-    warp_fasiis: list[tuple[Channel, Channel]] = []
-    FasiiRaw = aliased(Channel)
-    for image in images:
-        neuropil_chan_number = image.raw_file.fasii_chan
-        stmt = (
-            select_most_recent("mask-register", image, select(Channel, FasiiRaw))
-            .join(ChannelMetadata, Channel.mdata)
-            .filter(
-                ChannelMetadata.key == "xform-type",
-                ChannelMetadata.value == "warp",
-            )
-            .join(FasiiRaw, Image.channels)
-            .filter(FasiiRaw.number == neuropil_chan_number)
-            .filter(FasiiRaw.channel_type == "raw")
-        )
-        result = session.execute(stmt).first()
-        if result is None:
-            logger.warning("No results for image %s", image.folder)
-            continue
-        warp, fasii = result
-        assert fasii.channel_type == "raw"
-        warp_fasiis.append((warp, fasii))
-    if len(warp_fasiis) == 0:
-        raise InvalidStepError("No images to process")
-    for input_channels in warp_fasiis:
-        check_progress(session, input_channels, 4)
-    for warp, fasii in warp_fasiis:
-        target_grid = get_target_grid(get_path(session, fasii), template_path)
-        step = AnalysisStep()
-        step.function = "reformat-fasii"
-        step.kwargs = "{}"
-        step.runtime = datetime.now()
-        warp_aligned = Channel()
-        warp_aligned.path = "mask_warped_fasii.nrrd"
-        chan_number = fasii.image.raw_file.fasii_chan
-        assert chan_number is not None
-        warp_aligned.number = chan_number
-        warp_aligned.channel_type = "aligned"
-        perform_analysis_step(
-            session, step, [warp, fasii], [warp_aligned], 4, copy_scale=True
-        )
-        run_with_logging(
-            (
-                get_cmtk_executable("reformatx"),
-                "-o",
-                get_path(session, warp_aligned),
-                "--target-grid",
-                target_grid,
-                "--linear",
-                "--floating",
-                get_path(session, fasii),
-                get_path(session, warp),
-            )
-        )
-    session.commit()
-
-
 def fasii_template(session: Session, image_paths: list[str] | None):
     """
     does a groupwise warp to create a fasII tempalate
@@ -224,7 +157,11 @@ def fasii_template(session: Session, image_paths: list[str] | None):
     warpeds: list[Channel] = []
     for image in images:
         warped = (
-            session.execute(select_most_recent("reformat-fasii", image))
+            session.execute(
+                select_most_recent("mask-register", image).filter(
+                    Channel.channel_type == "aligned",
+                )
+            )
             .scalars()
             .first()
         )
@@ -234,6 +171,7 @@ def fasii_template(session: Session, image_paths: list[str] | None):
         warpeds.append(warped)
     if len(warpeds) == 0:
         raise InvalidStepError("No images to process")
+    # preprocess image
     prefix_dir = get_path(session, None)
     run_with_logging(
         [

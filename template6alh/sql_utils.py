@@ -14,7 +14,7 @@ from sqlalchemy.exc import NoResultFound
 import numpy as np
 import nrrd
 
-from .sql_classes import Image, GlobalConfig, AnalysisStep, Channel
+from .sql_classes import Image, GlobalConfig, AnalysisStep, Channel, FunctionName
 from .execptions import (
     BadImageFolder,
     BadInputImages,
@@ -309,7 +309,7 @@ def get_mask_template_path(session: Session) -> tuple[Path, Path]:
 
 
 def select_most_recent(
-    step_name: str, image: Image, base_select: Select | None = None
+    step_name: FunctionName, image: Image, base_select: Select | None = None
 ) -> Select:
     """
     returns a select statment that joins an input chananel, its producer, and its image sorted by runtime and filtered by image and step name

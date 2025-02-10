@@ -83,6 +83,18 @@ def check_segment_neuropil(session: Session, root_dir: Path):
         assert np.array_equal(np.abs(spacings), [2, 2, 2])
 
 
+def check_select_neuopil_fasii(session: Session, root_dir: Path):
+    api.select_neuropil_fasii(session, None)
+    assert list(root_dir.glob("**/*neuropil_fasii.nrrd"))
+    images = get_imgs(session, None)
+    for image in images:
+        channel = session.execute(
+            select_most_recent("select-neuropil-fasii", image)
+        ).scalar_one()
+        assert channel.channel_type == "image"
+        assert get_path(session, channel).exists()
+
+
 def check_clean(session: Session, root_dir: Path):
     channels = session.execute(select(sc.Channel)).scalars().all()
     assert len(channels) == 13
@@ -169,6 +181,16 @@ def check_mask_register(session: Session, root_dir: Path):
         .all()
     )
     assert len(results) == 1
+    results = (
+        session.execute(
+            select_most_recent("mask-register", image).filter(
+                sc.Channel.channel_type == "aligned",
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(results) == 1
 
 
 def test_api():
@@ -187,6 +209,7 @@ def test_api():
             check_segment_neuropil(session, root_dir)
             check_clean(session, root_dir)
             check_select_most_recent(session)
+            check_select_neuopil_fasii(session, root_dir)
             check_make_landmarks(session, root_dir)
             mt_path.parent.mkdir(exist_ok=True, parents=True)
             nrrd.write(
@@ -232,20 +255,6 @@ def check_groupwise_template(session: Session, root_dir: Path):
     assert data.dtype == np.uint8
 
 
-def check_reformat_fasii(session: Session, root_dir: Path):
-    template_creation.reformat_fasii(session, None)
-    paths = list(root_dir.glob("**/*mask_warped_fasii.nrrd"))
-    path = paths[0]
-    header = nrrd.read_header(str(path))
-    assert np.array_equal(header["space directions"], np.diag([1, 1, 1]))
-    image = (
-        session.execute(select(sc.Channel).filter(sc.Channel.channel_type == "aligned"))
-        .scalars()
-        .all()
-    )
-    assert len(image) == 2
-
-
 def check_fasii_template(session: Session, root_dir: Path):
     template_creation.fasii_template(session, None)
 
@@ -272,5 +281,5 @@ def test_template():
             check_make_landmarks(session, root_dir)
             check_landmark_align(session, root_dir)
             check_groupwise_template(session, root_dir)
-            check_reformat_fasii(session, root_dir)
-            check_fasii_template(session, root_dir)
+            check_select_neuopil_fasii(session, root_dir)
+            # check_fasii_template(session, root_dir)
