@@ -79,7 +79,14 @@ def landmark_align(
         step.function = "landmark-align"
         step.kwargs = repr({"landmark_path": landmark_path, "target_grid": target_grid})
         step.runtime = datetime.now()
-        perform_analysis_step(session, step, [xform, mask_chan], [output_channel], 3)
+        perform_analysis_step(
+            session,
+            step,
+            [xform, mask_chan],
+            [output_channel],
+            3,
+            update_progress=False,
+        )
         run_with_logging(
             (
                 get_cmtk_executable("reformatx"),

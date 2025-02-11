@@ -274,7 +274,13 @@ def select_neuropil_fasii(session: Session, image_paths: list[str] | None):
         masked_fasii.number = chan_number
         masked_fasii.channel_type = "image"
         perform_analysis_step(
-            session, step, [mask, fasii], [masked_fasii], 1, copy_scale=True
+            session,
+            step,
+            [mask, fasii],
+            [masked_fasii],
+            1,
+            copy_scale=True,
+            update_progress=False,
         )
         mask_data, _ = nrrd.read(str(get_path(session, mask)))
         fasii_data, fasii_md = nrrd.read(str(get_path(session, fasii)))

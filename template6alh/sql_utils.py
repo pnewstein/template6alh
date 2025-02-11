@@ -210,6 +210,7 @@ def perform_analysis_step(
     output_channels: list[Channel],
     current_step: int,
     copy_scale=False,
+    update_progress=True
 ) -> bool:
     """
     Wires all of objects together mutating the image. All relationships are
@@ -249,7 +250,8 @@ def perform_analysis_step(
     progress_status = check_progress(session, input_channels, current_step)
     if progress_status in ["bad inputs", "skipping"]:
         return False
-    image.progress = current_step
+    if update_progress:
+        image.progress = current_step
     analysis_step.output_channels = output_channels
     analysis_step.input_channels = input_channels
     logger.debug("Completed step %d on %s", current_step, image.folder)
