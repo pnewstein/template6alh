@@ -10,12 +10,12 @@ import logging
 import nrrd
 import numpy as np
 from sqlalchemy import Engine, Connection, select, MetaData
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session
 from skimage.data import binary_blobs
 
 from template6alh import api, template_creation, matplotlib_slice
 from template6alh import sql_classes as sc
-from template6alh.utils import get_engine
+from template6alh.utils import get_engine, run_with_logging, get_cmtk_executable
 from template6alh.sql_utils import get_path, select_most_recent, get_imgs, ConfigDict
 
 logger = logging.getLogger()
@@ -87,12 +87,18 @@ def check_select_neuopil_fasii(session: Session, root_dir: Path):
     api.select_neuropil_fasii(session, None)
     assert list(root_dir.glob("**/*neuropil_fasii.nrrd"))
     images = get_imgs(session, None)
+    path = None
     for image in images:
         channel = session.execute(
             select_most_recent("select-neuropil-fasii", image)
         ).scalar_one()
         assert channel.channel_type == "image"
-        assert get_path(session, channel).exists()
+        path = get_path(session, channel)
+        assert path.exists()
+    assert path is not None
+    out = run_with_logging((get_cmtk_executable("describe"), "-m", path))
+    response = out.stderr.decode() + out.stdout.decode()
+    assert "(8bit unsigned)" in response
 
 
 def check_clean(session: Session, root_dir: Path):
