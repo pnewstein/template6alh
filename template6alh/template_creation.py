@@ -27,6 +27,7 @@ from .sql_utils import (
     select_recent_landmark_xform_and_mask,
 )
 from .utils import get_cmtk_executable, run_with_logging, get_target_grid
+from .iterative_shape_averaging import do_iteration
 from . import matplotlib_slice, api
 
 logger = getLogger(__name__)
@@ -156,7 +157,7 @@ def iterative_mask_template(
     nrrd.write(file=str(mask_path), data=template, header=template_md)
 
 
-def fasii_template(session: Session, image_paths: list[str] | None):
+def fasii_groupwise(session: Session, image_paths: list[str] | None):
     """
     does a groupwise warp to create a fasII tempalate
     """
@@ -227,6 +228,48 @@ def fasii_template(session: Session, image_paths: list[str] | None):
             prefix_dir / "groupwise/initial/groupwise.xforms",
         )
     )
+
+
+def fasii_template(session: Session, image_paths: list[str] | None):
+    """
+    does a groupwise warp to create a fasII tempalate
+    """
+    api.mask_register(session, image_paths)
+    images = get_imgs(session, image_paths)
+    warpeds: list[Channel] = []
+    for image in images:
+        warped = (
+            session.execute(
+                select_most_recent("mask-register", image).filter(
+                    Channel.channel_type == "aligned",
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if warped is None:
+            logger.warning("No results for image %s", image.folder)
+            continue
+        warpeds.append(warped)
+    if len(warpeds) == 0:
+        raise InvalidStepError("No images to process")
+    # preprocess image
+    prefix_dir = get_path(session, None)
+    template_create_dir = prefix_dir / "template_create"
+    template_create_dir.mkdir(exist_ok=True)
+    input_images = [get_path(session, w) for w in warpeds]
+    prev_dir = do_iteration(
+        input_images,
+        None,
+        template_create_dir / "iter0",
+        mode="none",
+        iteration=0,
+    )
+    for i in range(1, 6):
+        prefix_dir = do_iteration(
+            input_images, prev_dir, template_create_dir / f"iter{i}", "warp", i
+        )
+
 
 
 def write_landmarks(session: Session):
