@@ -289,7 +289,7 @@ def select_neuropil_fasii(session: Session, image_paths: list[str] | None):
         rescaled_mask_data = ndi.zoom(mask_data, scale_frac, order=0)
         assert rescaled_mask_data.shape == fasii_data.shape, "resize failed"
         # out_data = fasii_data * rescaled_mask_data
-        out_data = (fasii_data.copy() * (fasii_data.max() / 255)).astype(np.uint8)
+        out_data = (fasii_data.copy() * (255 / fasii_data.max())).astype(np.uint8)
         out_data[~rescaled_mask_data.astype(bool)] = 0
         del fasii_md["type"]
         nrrd.write(str(get_path(session, masked_fasii)), out_data, header=fasii_md)
