@@ -331,7 +331,10 @@ def view(images: list[str], scale: float | None, gamma: float | None):
             click.echo(f"{image_path} is not an nrrd", err=True)
             continue
         data, md = nrrd.read(image)
-        scale_frac = tuple((get_spacings(md) / scale).tolist())
+        if scale is not None:
+            scale_frac = tuple((get_spacings(md) / scale).tolist())
+        else:
+            scale_frac = scale
         slicers.append(
             matplotlib_slice.get_slicer(data, image, gamma=gamma, scale=scale_frac)
         )
