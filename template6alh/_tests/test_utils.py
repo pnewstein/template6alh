@@ -19,18 +19,9 @@ from template6alh.utils import (
     get_cmtk_executable,
 )
 from template6alh.matplotlib_slice import CoordsSet
+from template6alh.iterative_shape_averaging import ZERO_INIT as NO_FLIP
 
 getLogger().setLevel("INFO")
-
-NO_FLIP = """! TYPEDSTREAM 2.4
-
-affine_xform {
-    xlate 0 0 0
-    rotate 0 0 0
-    scale 1 1 1
-    shear 0 0 0
-    center 0 0 0
-}"""
 
 
 def test_validate_channels():
