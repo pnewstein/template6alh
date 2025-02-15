@@ -266,7 +266,7 @@ def fasii_template(session: Session, image_paths: list[str] | None):
         iteration=0,
     )
     for i in range(1, 6):
-        prefix_dir = do_iteration(
+        prev_dir = do_iteration(
             input_images, prev_dir, template_create_dir / f"iter{i}", "warp", i
         )
 
