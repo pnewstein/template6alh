@@ -93,10 +93,13 @@ def do_iteration(
         for input_path, xform_path, output_path, prev_xform_path in zip(
             input_images, xforms, out_images, prev_xforms
         ):
-
+            if xform_path.exists():
+                continue
             utils.run_with_logging(
                 (
                     utils.get_cmtk_executable("warp"),
+                    "--threads",
+                    "64",
                     "--echo",
                     "-v",
                     "--refine",
@@ -128,7 +131,8 @@ def do_iteration(
     if mode == "none":
         shutil.copy(input_images[0], new_template)
     else:
-        utils.run_with_logging(
-            [utils.get_cmtk_executable("average_images"), "-o", new_template] + out_images
-        )
+        if not new_template.exists():
+            utils.run_with_logging(
+                [utils.get_cmtk_executable("average_images"), "-o", new_template] + out_images
+            )
     return new_dir
