@@ -20,7 +20,7 @@ from .sql_utils import (
     get_path,
     validate_db,
     get_imgs,
-    get_mask_template_path,
+    get_fasii_template_path,
     check_progress,
     ConfigDict,
     select_most_recent,
@@ -269,7 +269,14 @@ def fasii_template(session: Session, image_paths: list[str] | None):
         prev_dir = do_iteration(
             input_images, prev_dir, template_create_dir / f"iter{i}", "warp", i
         )
-
+    # postprocesses
+    template_path = get_fasii_template_path(session)
+    assert template_path.exists()
+    assert template_path.stat().st_size > 1
+    template, template_md = nrrd.read(str(template_path))
+    template = template * (254 / template.max())
+    template = template.astype(np.uint8)
+    nrrd.write(file=str(template_path), data=template, header=template_md)
 
 
 def write_landmarks(session: Session):

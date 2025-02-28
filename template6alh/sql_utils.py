@@ -115,7 +115,10 @@ def get_imgs(session: Session, image_ids: list[str] | None) -> Sequence[Image]:
 
 
 ConfigKey: TypeAlias = Literal[
-    "prefix_dir", "mask_template_path", "mask_template_landmarks_path"
+    "prefix_dir",
+    "mask_template_path",
+    "mask_template_landmarks_path",
+    "fasii_template_path",
 ]
 
 
@@ -210,7 +213,7 @@ def perform_analysis_step(
     output_channels: list[Channel],
     current_step: int,
     copy_scale=False,
-    update_progress=True
+    update_progress=True,
 ) -> bool:
     """
     Wires all of objects together mutating the image. All relationships are
@@ -290,6 +293,23 @@ def save_channel_to_disk(session: Session, channel: Channel, data: np.ndarray):
     )
 
 
+def get_fasii_template_path(session: Session) -> Path:
+    """
+    gets the path to fasii template
+    """
+    config_dict = ConfigDict(session)
+    try:
+        return Path(config_dict["fasii_template_path"])
+    except InvalidStepError:
+        pass
+    prefix_dir = Path(config_dict["prefix_dir"])
+    image_path = prefix_dir / "template/fasii_template.nrrd"
+    if not image_path.exists():
+        raise CannotFindTemplate()
+    config_dict["fasii_template_path"] = str(image_path)
+    return image_path
+
+
 def get_mask_template_path(session: Session) -> tuple[Path, Path]:
     """
     gets the path to the mask_template
@@ -307,6 +327,8 @@ def get_mask_template_path(session: Session) -> tuple[Path, Path]:
     landmarks_path = prefix_dir / "template/mask_template.landmarks"
     if not image_path.exists():
         raise CannotFindTemplate()
+    config_dict["mask_template_path"] = str(image_path)
+    config_dict["mask_template_landmarks_path"] = str(landmarks_path)
     return image_path, landmarks_path
 
 
