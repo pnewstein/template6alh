@@ -20,6 +20,7 @@ affine_xform {
     center 0 0 0
 }"""
 
+
 def get_grid_spacing(md: dict, iteration: int) -> float:
     """
     gets half the smallest grid spacing as done in get_level_warp_args from cmtk iterave_shape_averaging
@@ -133,6 +134,7 @@ def do_iteration(
     else:
         if not new_template.exists():
             utils.run_with_logging(
-                [utils.get_cmtk_executable("average_images"), "-o", new_template] + out_images
+                [utils.get_cmtk_executable("average_images"), "-o", new_template]
+                + out_images
             )
     return new_dir
