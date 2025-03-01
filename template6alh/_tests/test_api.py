@@ -199,6 +199,15 @@ def check_mask_register(session: Session, root_dir: Path):
     assert len(results) == 1
 
 
+def check_fasii_align(session: Session, root_dir: Path):
+    api.fasii_align(session, None, [1, 2])
+    image = session.execute(
+        select(sc.Image).filter(sc.Image.folder == "002")
+    ).scalar_one()
+    outputs = session.execute(select_most_recent("fasii-align", image)).scalars().all()
+    assert len(outputs) == 3
+
+
 def test_api():
     with tempfile.TemporaryDirectory() as folder_str:
         folder = Path(folder_str)
@@ -231,6 +240,7 @@ def test_api():
                 binary_blobs(length=20, n_dim=3).astype(np.uint8) * 254,
                 header=header,
             )
+            check_fasii_align(session, root_dir)
 
 
 def check_landmark_align(session: Session, root_dir: Path):

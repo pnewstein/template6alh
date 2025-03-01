@@ -5,7 +5,7 @@ there is a one to one correspondence between api functions and cli options
 """
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 from datetime import datetime
 import logging
 
@@ -35,6 +35,7 @@ from .sql_utils import (
     validate_db,
     save_channel_to_disk,
     get_mask_template_path,
+    get_fasii_template_path,
     ConfigDict,
     select_most_recent,
     select_recent_landmark_xform_and_mask,
@@ -401,7 +402,7 @@ def landmark_register(session: Session, image_paths: list[str] | None):
     session.commit()
 
 
-# TODO allow kwargs
+# TODO add kwargs
 def mask_register(session: Session, image_paths: list[str] | None):
     """
     registers all of the templates masks also reformat fasii image
@@ -517,4 +518,121 @@ def mask_register(session: Session, image_paths: list[str] | None):
                 get_path(session, warp_xform_chan),
             )
         )
+    session.commit()
+
+
+# TODO allow kwargs
+# TODO split this in two
+def fasii_align(
+    session: Session, image_paths: list[str] | None, channels: Sequence[int]
+):
+    """
+    registers all of the templates masks also reformat fasii image
+    """
+    validate_db(session)
+    template_path = get_fasii_template_path(session)
+    images = get_imgs(session, image_paths)
+    fasii_xform_chans: list[tuple[Channel, Channel, tuple[Channel, ...]]] = []
+    Xform = aliased(Channel)
+    for image in images:
+        fasii_xform_or_none = session.execute(
+            select_most_recent("mask-register", image, select(Channel, Xform))
+            .filter(Channel.channel_type == "aligned")
+            .join(Xform, AnalysisStep.output_channels)
+            .join(ChannelMetadata, Xform.mdata)
+            .filter(
+                ChannelMetadata.key == "xform-type", ChannelMetadata.value == "warp"
+            )
+        ).first()
+        if fasii_xform_or_none is None:
+            logger.warning("could find image %s", image.folder)
+            continue
+        fasii, xform = fasii_xform_or_none
+        assert "mask_warped_fasii.nrrd" in fasii.path
+        assert "warp_mask.xform" in xform.path
+        in_channels: list[Channel] = []
+        for num in channels:
+            channel = session.execute(
+                select(Channel)
+                .filter(Channel.channel_type == "raw")
+                .filter(Channel.number == num)
+                .join(Image, Channel.image)
+                .filter(Image.folder == image.folder)
+            ).scalar_one_or_none()
+            if channel is None:
+                raise InvalidStepError(f"channel {num} not found")
+            in_channels.append(channel)
+        assert len(in_channels) == len(channels)
+        fasii_xform_chans.append((fasii, xform, tuple(in_channels)))
+    if len(fasii_xform_chans) == 0:
+        raise InvalidStepError("No images found")
+    # allert to errors first
+    for fasii, xform, chans in fasii_xform_chans:
+        _ = check_progress(session, [fasii, xform, *chans], 5)
+    # do two phase registration
+    for fasii, xform, input_chans in fasii_xform_chans:
+        # database update
+        analysis_step = AnalysisStep()
+        analysis_step.function = "fasii-align"
+        analysis_step.kwargs = "{}"
+        analysis_step.runtime = datetime.now()
+        warp_xform_chan = Channel()
+        warp_xform_chan.path = f"warp_mask.xform"
+        warp_xform_chan.channel_type = "xform"
+        warp_xform_chan.mdata = [ChannelMetadata(key="xform-type", value="warp")]
+        output_chans: list[Channel] = []
+        for in_chan in input_chans:
+            out_chan = Channel()
+            out_chan.path = f"reformated_{in_chan.path}"
+            out_chan.number = in_chan.number
+            out_chan.channel_type = "aligned"
+            output_chans.append(out_chan)
+        assert len(output_chans) == len(input_chans)
+        perform_analysis_step(
+            session,
+            analysis_step,
+            [fasii, xform, *input_chans],
+            [warp_xform_chan, *output_chans],
+            5,
+            copy_scale=True,
+        )
+        # Call cmtk
+        run_with_logging(
+            (
+                get_cmtk_executable("warp"),
+                "--outlist",
+                get_path(session, warp_xform_chan),
+                "--grid-spacing",
+                "10",
+                "--fast",
+                "--exploration",
+                "26",
+                "--coarsest",
+                "8",
+                "--accuracy",
+                "0.8",
+                "--refine",
+                "4",
+                "--energy-weight",
+                "1e-1",
+                "--ic-weight",
+                "0",
+                template_path,
+                get_path(session, fasii),
+            )
+        )
+        for in_chan, out_chan in zip(input_chans, output_chans):
+            run_with_logging(
+                (
+                    get_cmtk_executable("reformatx"),
+                    "-o",
+                    get_path(session, out_chan),
+                    "--linear",
+                    "--floating",
+                    get_path(session, in_chan),
+                    template_path,
+                    get_path(session, xform),
+                    get_path(session, warp_xform_chan),
+                )
+            )
     session.commit()

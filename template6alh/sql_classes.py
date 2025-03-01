@@ -32,6 +32,7 @@ FunctionName = Literal[
     "reformat-fasii",
     "select-neuropil-fasii",
     "make-neuropil-mask",
+    "fasii-align",
 ]
 
 
