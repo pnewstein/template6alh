@@ -303,4 +303,4 @@ def test_template():
             check_landmark_align(session, root_dir)
             check_groupwise_template(session, root_dir)
             check_select_neuopil_fasii(session, root_dir)
-            # check_fasii_template(session, root_dir)
+            #check_fasii_template(session, root_dir)
