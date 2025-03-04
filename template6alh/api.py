@@ -156,7 +156,7 @@ def segment_neuropil(
     session: Session,
     image_paths: list[str] | None,
     new_scale: float | None,
-    filter_sigma: float | None,
+    gamma: float | None,
     opening_size: float | None,
 ):
     """
@@ -164,7 +164,7 @@ def segment_neuropil(
 
     new_scale: float: the output scale in um. Default is 1. negative numbers
         are interpreted as no new scale
-    filter_sigma: float, a sigma for a noise removal filter: default .1 um
+    gamma: float, gamma correction for the image default 2
     opening_size: float, the size where smaller objects will be removed. default 1um
 
     Raises
@@ -179,10 +179,8 @@ def segment_neuropil(
             if new_scale is not None
             else default_args_make_neuropil_mask["new_scale"]
         ),
-        "filter_sigma": (
-            filter_sigma
-            if filter_sigma is not None
-            else default_args_make_neuropil_mask["filter_sigma"]
+        "gamma": (
+            gamma if gamma is not None else default_args_make_neuropil_mask["gamma"]
         ),
         "opening_size": (
             opening_size

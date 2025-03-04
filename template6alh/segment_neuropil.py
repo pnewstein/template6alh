@@ -7,14 +7,14 @@ import logging
 
 import pandas as pd
 import numpy as np
-from skimage import morphology, restoration, filters, measure, measure
+from skimage import morphology, restoration, filters, measure, measure, exposure
 from scipy import ndimage as ndi
 
 logger = logging.getLogger(__name__)
 
 default_args_make_neuropil_mask = {
     "new_scale": 0.5,
-    "filter_sigma": 0.1,
+    "gamma": 1.0,
     "opening_size": 2.0,
 }
 
@@ -23,7 +23,7 @@ def make_neuropil_mask(
     img_data: np.ndarray,
     scale: tuple[float, float, float],
     new_scale: float | None,
-    filter_sigma: float,
+    gamma: float,
     opening_size: float,
 ) -> np.ndarray:
     """
@@ -35,13 +35,13 @@ def make_neuropil_mask(
     if new_scale is not None:
         img_data = ndi.zoom(img_data, np.array(scale) / new_scale)
         scale = (new_scale, new_scale, new_scale)
+    img_data = img_data * (np.iinfo(img_data.dtype).max / img_data.max())
+    img_data = exposure.adjust_gamma(img_data, gamma)
     size = tuple(opening_size / e for e in scale)
     kernel = restoration.ellipsoid_kernel(size, 1) != np.inf
     opened = morphology.opening(img_data, kernel)
-    sigma = tuple(filter_sigma / e for e in scale)
-    blured = filters.gaussian(opened, sigma)  # type: ignore
-    threshold = filters.threshold_otsu(blured)
-    neuropil_mask = blured > threshold
+    threshold = filters.threshold_otsu(opened)
+    neuropil_mask = opened > threshold
     # ensure there is only one neuropil
     labeled = measure.label(neuropil_mask)
     assert isinstance(labeled, np.ndarray)

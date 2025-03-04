@@ -179,10 +179,11 @@ Takes a list of folders names.
     help="the size for which smaller objects will be removed. default 1um",
 )
 @click.option(
-    "--filter-sigma",
+    "-g",
+    "--gamma",
     type=float,
     default=None,
-    help="a sigma for a noise removal filter: default .1 um",
+    help="gamma correction for the image. default: 2",
 )
 @click.pass_context
 def segment_neuropil(
@@ -190,7 +191,7 @@ def segment_neuropil(
     image_folders: list[str],
     image_folders_file: str | None,
     new_scale: float | None,
-    filter_sigma: float | None,
+    gamma: float | None,
     opening_size: float | None,
 ):
     ctx_dict = ctx.find_object(dict)
@@ -202,7 +203,7 @@ def segment_neuropil(
                 session,
                 image_paths=image_folders_or_none,
                 new_scale=new_scale,
-                filter_sigma=filter_sigma,
+                gamma=gamma,
                 opening_size=opening_size,
             )
         except InvalidStepError as e:
