@@ -233,7 +233,9 @@ def perform_analysis_step(
             oc.number = input_channels[0].number
         oc.step_number = current_step
     if any(not get_path(session, channel).exists() for channel in input_channels):
-        raise FileNotFoundError(f"missing {input_channels}")
+        raise FileNotFoundError(
+            f"missing one of the channels in the database.\nTry t6alh clean"
+        )
     if copy_scale:
         for oc in output_channels:
             oc.scalex = input_channels[0].scalex
