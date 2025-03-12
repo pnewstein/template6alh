@@ -47,6 +47,86 @@ def get_paths(ctx: click.Context):
         paths = api.get_paths(session, ctx_dict.get("database"))
     click.echo(json.dumps({k: str(v) for k, v in paths.items()}, indent=4))
 
+@main.command(
+    "init-and-segment",
+    help="Takes a list of microscopy files and initializes the db making a cache of all of the images, also segments the image",
+)
+@click.argument("raw-files", type=click.Path(exists=True, dir_okay=False), nargs=-1)
+@click.option(
+    "-r",
+    "--root-dir",
+    type=click.Path(file_okay=False),
+    help="the path where data is cached.",
+)
+@click.option(
+    "-n", "--neuropil-chan", type=int, help="Channel labeling the neuropil (1 indexed)"
+)
+@click.option(
+    "-f",
+    "--fasii-chan",
+    type=int,
+    default=None,
+    help="Channel labeling the FasII tracts (1 indexed)",
+)
+@click.option(
+    "-e",
+    "--eve-chan",
+    type=int,
+    default=None,
+    help="Channel labeling the FasII tracts (1 indexed)",
+)
+@click.option(
+    "-s",
+    "--new-scale",
+    type=float,
+    default=None,
+    help="the output scale in um. Default is 1. negative numbers are interpreted as no new scale",
+)
+@click.option(
+    "-o",
+    "--opening-size",
+    type=float,
+    default=None,
+    help="the size for which smaller objects will be removed. default 1um",
+)
+@click.option(
+    "-g",
+    "--gamma",
+    type=float,
+    default=None,
+    help="gamma correction for the image. default: 2",
+)
+@click.pass_context
+def init_and_segment(
+    ctx: click.Context,
+    raw_files: tuple[str, ...],
+    root_dir: str,
+    neuropil_chan: int,
+    fasii_chan: int | None,
+    eve_chan: int | None,
+    new_scale: float | None,
+    gamma: float | None,
+    opening_size: float | None,
+):
+    ctx_dict = ctx.find_object(dict)
+    assert ctx_dict is not None
+    if not raw_files:
+        click.echo("No raw files", err=True)
+    try:
+        engine = get_engine_with_context(ctx_dict, delete_previous=True)
+        api.init(
+            engine,
+            raw_data=[Path(f) for f in raw_files],
+            root_dir=Path(root_dir),
+            fasii_chan=fasii_chan,
+            neuropil_chan=neuropil_chan,
+            eve_chan=eve_chan,
+        )
+        with Session(engine) as session:
+            api.segment_neuropil(session, None, new_scale, gamma, opening_size)
+    except InvalidStepError as e:
+        click.echo(e)
+        sys.exit(1)
 
 @main.command(
     "init",
