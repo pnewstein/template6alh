@@ -128,6 +128,50 @@ def init_and_segment(
         click.echo(e)
         sys.exit(1)
 
+
+@main.command(
+    help="""
+    use a image slicer to find lanmarks on all segmented images
+"""
+)
+@click.argument("image-folders", type=str, nargs=-1)
+@click.option(
+    "-f",
+    "--image-folders-file",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
+)
+@click.option(
+    "-c",
+    "--channel",
+    type=click.INT,
+    multiple=True,
+    help="Channel can be allowed. multiple are supported '-c 1 -c 2'",
+)
+@click.pass_context
+def align(
+    ctx: click.Context,
+    image_folders: list[str],
+    image_folders_file: str | None,
+    channel: tuple[int, ...],
+):
+    ctx_dict = ctx.find_object(dict)
+    assert ctx_dict is not None
+    image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)
+    with Session(get_engine_with_context(ctx_dict)) as session:
+        try:
+            api.landmark_register(session, image_folders_or_none)
+            api.mask_register(session, image_folders_or_none)
+            api.select_neuropil_fasii(
+                session,
+                image_paths=image_folders_or_none,
+            )
+            api.fasii_align(session, image_folders_or_none, channel)
+        except InvalidStepError as e:
+            click.echo(e)
+            sys.exit(1)
+
 @main.command(
     "init",
     help="Takes a list of microscopy files and initializes the db making a cache of all of the images",
