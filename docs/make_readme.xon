@@ -1,0 +1,4 @@
+quickstart = $(cat quickstart.md)
+install = $(cat install.md)
+readme = $(cat README-template.md)
+echo @(readme.format(quickstart=quickstart, install=install)) > README.md

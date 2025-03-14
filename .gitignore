@@ -3,5 +3,8 @@
 **/*.dev
 **/__pycache__
 template6alh/_tests/data/
+docs/README.md
+docs/build/
+docs/t6alh.html
 
 
