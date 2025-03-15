@@ -282,6 +282,7 @@ def select_neuropil_fasii(session: Session, image_paths: list[str] | None):
             update_progress=False,
         )
         mask_data, _ = nrrd.read(str(get_path(session, mask)))
+        mask_data = ndi.binary_dilation(mask_data, np.ones([6] * 3))
         fasii_data, fasii_md = nrrd.read(str(get_path(session, fasii)))
         scale_frac = np.array(fasii_data.shape) / np.array(mask_data.shape)
         # get_spacings(mask_md) / get_spacings(fasii_md)
