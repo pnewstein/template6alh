@@ -630,8 +630,8 @@ def fasii_align(
                     "--floating",
                     get_path(session, in_chan),
                     template_path,
-                    get_path(session, xform),
                     get_path(session, warp_xform_chan),
+                    get_path(session, xform),
                 )
             )
     session.commit()
