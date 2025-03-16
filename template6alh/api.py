@@ -576,7 +576,7 @@ def fasii_align(
         analysis_step.kwargs = "{}"
         analysis_step.runtime = datetime.now()
         warp_xform_chan = Channel()
-        warp_xform_chan.path = f"warp_mask.xform"
+        warp_xform_chan.path = f"warp_fasii.xform"
         warp_xform_chan.channel_type = "xform"
         warp_xform_chan.mdata = [ChannelMetadata(key="xform-type", value="warp")]
         output_chans: list[Channel] = []
