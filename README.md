@@ -1,14 +1,18 @@
 # Template 6 Alh
+
+**WORK IN PROGRESS**
+
 A tool for aligning images of <i>Drosophila</i> brains from 6 hour old larvea
 
-## Quickstart
-Three commands are neccisary to align to the template brain
+
+## Quick start
+Three commands are necessary to align to the template brain
 
 ### Import data
  ```bash
 t6alh init-and-segment --root-dir /storage/data --fasii-chan 1 --neuropil-chan 2 example1.czi example2.czi
  ```
-- Reads all scenes from czi files and caches the raw data
+- Reads all scenes from zeiss czi files and caches the raw data
 - Downloads templates
 - Lowers the resolution of the file and classifies pixels as belonging to the neuropil
 
@@ -28,4 +32,7 @@ t6alh align
 - then register and warp to the FasII template 
 
 
+
+# Documentation
+Full documentation can be found at [pnewstein.github.io/t6alh-doc](https://pnewstein.github.io/t6alh-doc)
 
