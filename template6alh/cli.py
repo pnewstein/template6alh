@@ -38,25 +38,30 @@ def main(ctx: click.Context, verbose: bool, database: str | None):
     logger.info("New cli innovation")
 
 
-@main.command(help="prints relevent paths as json")
+@main.command()
 @click.pass_context
 def get_paths(ctx: click.Context):
+    """
+    prints relevant paths as a json file
+
+    \b
+    t6alh get-paths
+    """
+
     ctx_dict = ctx.find_object(dict)
     assert ctx_dict is not None
     with Session(get_engine_with_context(ctx_dict)) as session:
         paths = api.get_paths(session, ctx_dict.get("database"))
     click.echo(json.dumps({k: str(v) for k, v in paths.items()}, indent=4))
 
-@main.command(
-    "init-and-segment",
-    help="Takes a list of microscopy files and initializes the db making a cache of all of the images, also segments the image",
-)
+
+@main.command()
 @click.argument("raw-files", type=click.Path(exists=True, dir_okay=False), nargs=-1)
 @click.option(
     "-r",
     "--root-dir",
     type=click.Path(file_okay=False),
-    help="the path where data is cached.",
+    help="the path where data is cached",
 )
 @click.option(
     "-n", "--neuropil-chan", type=int, help="Channel labeling the neuropil (1 indexed)"
@@ -73,21 +78,21 @@ def get_paths(ctx: click.Context):
     "--eve-chan",
     type=int,
     default=None,
-    help="Channel labeling the FasII tracts (1 indexed)",
+    help="Channel labeling even skipped (1 indexed)",
 )
 @click.option(
     "-s",
     "--new-scale",
     type=float,
     default=None,
-    help="the output scale in um. Default is 1. negative numbers are interpreted as no new scale",
+    help="the output scale in um. Default is 1. Negative numbers are interpreted as no new scale",
 )
 @click.option(
     "-o",
     "--opening-size",
     type=float,
     default=None,
-    help="the size for which smaller objects will be removed. default 1um",
+    help="the size for which smaller objects will be removed. Default 1um",
 )
 @click.option(
     "-g",
@@ -108,6 +113,13 @@ def init_and_segment(
     gamma: float | None,
     opening_size: float | None,
 ):
+    """
+    Takes a list of microscopy files and initializes the db making a cache of
+    all of the images, also segments the image.
+
+    \b
+    t6alh init-and-segment /storage/1.czi /storage/2.czi --root-dir ~/t6alh-cache --neuropil-chan 1 --fasii-chan 2
+    """
     ctx_dict = ctx.find_object(dict)
     assert ctx_dict is not None
     if not raw_files:
@@ -129,25 +141,21 @@ def init_and_segment(
         sys.exit(1)
 
 
-@main.command(
-    help="""
-    use a image slicer to find lanmarks on all segmented images
-"""
-)
+@main.command()
 @click.argument("image-folders", type=str, nargs=-1)
 @click.option(
     "-f",
     "--image-folders-file",
     type=click.Path(exists=True, dir_okay=False),
     default=None,
-    help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
+    help="A text file with all of the folder names. An alternative to [IMAGE-FOLDERS]",
 )
 @click.option(
     "-c",
     "--channel",
     type=click.INT,
     multiple=True,
-    help="Channel can be allowed. multiple are supported '-c 1 -c 2'",
+    help="Channel can be allowed. Multiple are supported '-c 1 -c 2'",
 )
 @click.pass_context
 def align(
@@ -156,6 +164,13 @@ def align(
     image_folders_file: str | None,
     channel: tuple[int, ...],
 ):
+    """
+    Does a multi step alignment
+
+    \b
+    t6alh align 001 002 -c 1 -c 2 -c 3 -c 4
+    """
+
     ctx_dict = ctx.find_object(dict)
     assert ctx_dict is not None
     image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)
@@ -172,16 +187,14 @@ def align(
             click.echo(e)
             sys.exit(1)
 
-@main.command(
-    "init",
-    help="Takes a list of microscopy files and initializes the db making a cache of all of the images",
-)
+
+@main.command()
 @click.argument("raw-files", type=click.Path(exists=True, dir_okay=False), nargs=-1)
 @click.option(
     "-r",
     "--root-dir",
     type=click.Path(file_okay=False),
-    help="the path where data is cached.",
+    help="the path where data is cached",
 )
 @click.option(
     "-n", "--neuropil-chan", type=int, help="Channel labeling the neuropil (1 indexed)"
@@ -198,7 +211,7 @@ def align(
     "--eve-chan",
     type=int,
     default=None,
-    help="Channel labeling the FasII tracts (1 indexed)",
+    help="Channel labeling even skipped (1 indexed)",
 )
 @click.pass_context
 def init(
@@ -209,6 +222,14 @@ def init(
     fasii_chan: int | None,
     eve_chan: int | None,
 ):
+    """
+
+    Takes a list of microscopy files and initializes a sqlite db making a cache
+    of all channels of all images in files like `001/chan1`
+
+    \b
+    t6alh init /storage/1.czi /storage/2.czi --root-dir ~/t6alh-cache --neuropil-chan 1 --fasii-chan 2
+    """
     ctx_dict = ctx.find_object(dict)
     assert ctx_dict is not None
     if not raw_files:
@@ -227,7 +248,7 @@ def init(
         sys.exit(1)
 
 
-@main.command(help="Takes a list of microscopy files to add to the db")
+@main.command()
 @click.argument("raw-files", type=click.Path(exists=True, dir_okay=False), nargs=-1)
 @click.option(
     "-n", "--neuropil-chan", type=int, help="Channel labeling the neuropil (1 indexed)"
@@ -244,7 +265,7 @@ def init(
     "--eve-chan",
     type=int,
     default=None,
-    help="Channel labeling the FasII tracts (1 indexed)",
+    help="Channel labeling even skipped (1 indexed)",
 )
 @click.pass_context
 def add_more_raw(
@@ -254,6 +275,13 @@ def add_more_raw(
     fasii_chan: int | None,
     eve_chan: int | None,
 ):
+    """
+    Takes a list of microscopy files to add to the db. Uses similar arguments
+    to t6alh init
+
+    \b
+    t6alh init /storage/1.czi /storage/2.czi --neuropil-chan 1 --fasii-chan 2
+    """
     ctx_dict = ctx.find_object(dict)
     assert ctx_dict is not None
     if not raw_files:
@@ -274,40 +302,35 @@ def add_more_raw(
             sys.exit(1)
 
 
-@main.command(
-    help="""
-Segments the neuropil labeling each pixel as 0 for not neuropil and 1 for neuropil.
-Takes a list of folders names.
-"""
-)
+@main.command()
 @click.argument("image-folders", type=str, nargs=-1)
 @click.option(
     "-f",
     "--image-folders-file",
     type=click.Path(exists=True, dir_okay=False),
     default=None,
-    help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
+    help="A text file with all of the folder names. An alternative to [IMAGE-FOLDERS]",
 )
 @click.option(
     "-s",
     "--new-scale",
     type=float,
     default=None,
-    help="the output scale in um. Default is 1. negative numbers are interpreted as no new scale",
+    help="the output scale in um. Default is 1. Negative numbers are interpreted as no new scale",
 )
 @click.option(
     "-o",
     "--opening-size",
     type=float,
     default=None,
-    help="the size for which smaller objects will be removed. default 1um",
+    help="the size for which smaller objects will be removed. Default 2um",
 )
 @click.option(
     "-g",
     "--gamma",
     type=float,
     default=None,
-    help="gamma correction for the image. default: 2",
+    help="gamma correction for the image. Default: 1",
 )
 @click.pass_context
 def segment_neuropil(
@@ -318,6 +341,14 @@ def segment_neuropil(
     gamma: float | None,
     opening_size: float | None,
 ):
+    """
+    Segments the neuropil labeling each pixel as 0 for not neuropil and 1 for
+    neuropil on a scaled down copy of the image creates the file
+    `neuropil-mask.nrrd`
+
+    \b
+    t6alh segment_neuropil 001 002 --opening-size 2
+    """
     ctx_dict = ctx.find_object(dict)
     assert ctx_dict is not None
     image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)
@@ -335,11 +366,15 @@ def segment_neuropil(
             sys.exit(1)
 
 
-@main.command(
-    help="removes all files from database which are no longer on the disk",
-)
+@main.command()
 @click.pass_context
 def clean(ctx: click.Context):
+    """
+    removes all files from database which are no longer on the disk
+
+    \b
+    t6alh clean
+    """
     ctx_dict = ctx.find_object(dict)
     assert ctx_dict is not None
     with Session(get_engine_with_context(ctx_dict)) as session:
@@ -350,18 +385,14 @@ def clean(ctx: click.Context):
             sys.exit(1)
 
 
-@main.command(
-    help="""
-    use a image slicer to find lanmarks on all segmented images
-"""
-)
+@main.command()
 @click.argument("image-folders", type=str, nargs=-1)
 @click.option(
     "-f",
     "--image-folders-file",
     type=click.Path(exists=True, dir_okay=False),
     default=None,
-    help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
+    help="A text file with all of the folder names. An alternative to [IMAGE-FOLDERS]",
 )
 @click.pass_context
 def make_landmarks(
@@ -369,6 +400,13 @@ def make_landmarks(
     image_folders: list[str],
     image_folders_file: str | None,
 ):
+    """
+    Uses a image slicer to find landmarks on all segmented images. Creates a
+    `.landmarks` file. Requires `$DISPLAY` to be set
+
+    \b
+    t6alh make_landmarks 001 002
+    """
     ctx_dict = ctx.find_object(dict)
     assert ctx_dict is not None
     image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)
@@ -380,18 +418,14 @@ def make_landmarks(
             sys.exit(1)
 
 
-@main.command(
-    help="""
-    uses landmarks to register to the template
-"""
-)
+@main.command()
 @click.argument("image-folders", type=str, nargs=-1)
 @click.option(
     "-f",
     "--image-folders-file",
     type=click.Path(exists=True, dir_okay=False),
     default=None,
-    help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
+    help="A text file with all of the folder names. An alternative to [IMAGE-FOLDERS]",
 )
 @click.pass_context
 def landmark_register(
@@ -399,6 +433,13 @@ def landmark_register(
     image_folders: list[str],
     image_folders_file: str | None,
 ):
+    """
+    uses `fit_affine_xform_landmarks` to register to the template, creates a
+    `landmark.xform` file describing the transformation
+
+    \b
+    t6alh landmark_register 001 002
+    """
     ctx_dict = ctx.find_object(dict)
     assert ctx_dict is not None
     image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)
@@ -410,18 +451,14 @@ def landmark_register(
             sys.exit(1)
 
 
-@main.command(
-    help="""
-    registers all of the templates masks also reformat fasii image
-"""
-)
+@main.command()
 @click.argument("image-folders", type=str, nargs=-1)
 @click.option(
     "-f",
     "--image-folders-file",
     type=click.Path(exists=True, dir_okay=False),
     default=None,
-    help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
+    help="A text file with all of the folder names. An alternative to [IMAGE-FOLDERS]",
 )
 @click.pass_context
 def mask_register(
@@ -429,6 +466,15 @@ def mask_register(
     image_folders: list[str],
     image_folders_file: str | None,
 ):
+    """
+    Uses `regiser` and `warp` to fit the registration from each image to the
+    mask template, creating `affine_mask.xform` and `warp_mask.xform`, then
+    uses `reformatx` to reformat the fasII tracts creating
+    `mask_warped_fasii.nrrd`
+
+    \b
+    t6alh mask-register 001 002
+    """
     ctx_dict = ctx.find_object(dict)
     assert ctx_dict is not None
     image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)
@@ -440,25 +486,21 @@ def mask_register(
             sys.exit(1)
 
 
-@main.command(
-    help="""
-    affine transform an image
-"""
-)
+@main.command()
 @click.argument("image-folders", type=str, nargs=-1)
 @click.option(
     "-f",
     "--image-folders-file",
     type=click.Path(exists=True, dir_okay=False),
     default=None,
-    help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
+    help="A text file with all of the folder names. An alternative to [IMAGE-FOLDERS]",
 )
 @click.option(
     "-c",
     "--channel",
     type=click.INT,
     multiple=True,
-    help="Channel can be allowed. multiple are supported '-c 1 -c 2'",
+    help="Channel can be allowed. Multiple are supported '-c 1 -c 2'",
 )
 @click.pass_context
 def fasii_align(
@@ -467,6 +509,15 @@ def fasii_align(
     image_folders_file: str | None,
     channel: tuple[int, ...],
 ):
+    """
+    Aligns the image to the FasII template using `warp` between the template
+    and the mask-aligned image creating 'warp.xform', then registers each of
+    the specified channels to the complete warp making files following the
+    pattern `reformated_chanN.nrrd`
+
+    \b
+    t6alh fasii-align 001 001 -c 1 -c 2 -c 3
+    """
     ctx_dict = ctx.find_object(dict)
     assert ctx_dict is not None
     image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)
@@ -478,15 +529,26 @@ def fasii_align(
             sys.exit(1)
 
 
-@main.command(
-    help="""
-    visualize nrrd files
-"""
-)
+@main.command()
 @click.argument("images", type=click.Path(exists=True, dir_okay=False), nargs=-1)
-@click.option("-g", "gamma", type=float, default=None)
-@click.option("-s", "scale", type=float, default=None)
+@click.option(
+    "-g", "gamma", type=float, default=None, help="Gamma correction. Default=1"
+)
+@click.option(
+    "-s",
+    "scale",
+    type=float,
+    default=None,
+    help="scale ratio. 0.5 means half as many pixels in each axis",
+)
 def view(images: list[str], scale: float | None, gamma: float | None):
+    """
+    Displays the image (or a low resolution version of the image) on a slicer.
+    $DISPLAY must be set
+
+    \b
+    t6alh view -s 0.1 image.nrrd
+    """
     slicers = []
     for image in images:
         image_path = Path(image)
@@ -506,18 +568,14 @@ def view(images: list[str], scale: float | None, gamma: float | None):
         slicer.quit()
 
 
-@main.command(
-    help="""
-    mask fasII raw with neuropil mask
-"""
-)
+@main.command()
 @click.argument("image-folders", type=str, nargs=-1)
 @click.option(
     "-f",
     "--image-folders-file",
     type=click.Path(exists=True, dir_okay=False),
     default=None,
-    help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
+    help="A text file with all of the folder names. An alternative to [IMAGE-FOLDERS]",
 )
 @click.pass_context
 def select_neuropil_fasii(
@@ -525,6 +583,14 @@ def select_neuropil_fasii(
     image_folders: list[str],
     image_folders_file: str | None,
 ):
+    """
+    Creates an image where all of the pixels in the FasII channel outside of
+    `neuropil_mask.nrrd` are set to 0. Saves this image as
+    `neuropil_fasii.nrrd`
+
+    \b
+    t6alh select-neuropil-fasii 001 002
+    """
     ctx_dict = ctx.find_object(dict)
     assert ctx_dict is not None
     image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)
@@ -546,25 +612,21 @@ def template(ctx: click.Context):
     pass
 
 
-@template.command(
-    help="""
-    Aligns masks to optional landmark_path using landmarks
-"""
-)
+@template.command()
 @click.argument("image-folders", type=str, nargs=-1)
 @click.option(
     "-f",
     "--image-folders-file",
     type=click.Path(exists=True, dir_okay=False),
     default=None,
-    help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
+    help="A text file with all of the folder names. An alternative to [IMAGE-FOLDERS]",
 )
 @click.option(
     "-l",
     "--landmark-path",
     type=click.Path(exists=True, dir_okay=False),
     default=None,
-    help="Landmarks for the template image. Reasonalbe default to center a Drosophila VNC",
+    help="Landmarks for the template image. Reasonable default to center a Drosophila VNC",
 )
 @click.option(
     "-t",
@@ -572,7 +634,7 @@ def template(ctx: click.Context):
     type=str,
     default=None,
     help="target-grid parameter passed to reformatx."
-    "Reasonalbe default to center a Drosophila VNC: 80,451,200:0.5000,0.5000,0.5000",
+    "Reasonable default to center a Drosophila VNC: 80,451,200:0.5000,0.5000,0.5000",
 )
 @click.pass_context
 def landmark_align(
@@ -582,6 +644,14 @@ def landmark_align(
     landmark_path: str | None,
     target_grid: str | None,
 ):
+    """
+    Takes landmarks from `t6alh make-landmarks` to align each image using
+    `fit_affine_xform_landmarks` then aligns the mask using `reformatx` to get
+    `landmark_reformat.nrrd`
+
+    \b
+    t6alh template landmark-align 001 002 --target-grid 80,451,200:0.5,0.50,0.5
+    """
     ctx_dict = ctx.find_object(dict)
     assert ctx_dict is not None
     image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)
@@ -599,18 +669,14 @@ def landmark_align(
             sys.exit(1)
 
 
-@template.command(
-    help="""
-    makes a template from the seleced images
-"""
-)
+@template.command()
 @click.argument("image-folders", type=str, nargs=-1)
 @click.option(
     "-f",
     "--image-folders-file",
     type=click.Path(exists=True, dir_okay=False),
     default=None,
-    help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
+    help="A text file with all of the folder names. An alternative to [IMAGE-FOLDERS]",
 )
 @click.pass_context
 def make_mask_template(
@@ -618,6 +684,13 @@ def make_mask_template(
     image_folders: list[str],
     image_folders_file: str | None,
 ):
+    """
+    Uses `iterative_shape_averaging` to align and warp together
+    `landmark_reformat.nrrd` to create `template/mask_template.nrrd`
+
+    \b
+    t6alh template make-mask-template 001 002 003 004
+    """
     ctx_dict = ctx.find_object(dict)
     assert ctx_dict is not None
     image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)
@@ -629,18 +702,14 @@ def make_mask_template(
             sys.exit(1)
 
 
-@template.command(
-    help="""
-    makes a template from mask reformated fasII images
-"""
-)
+@template.command()
 @click.argument("image-folders", type=str, nargs=-1)
 @click.option(
     "-f",
     "--image-folders-file",
     type=click.Path(exists=True, dir_okay=False),
     default=None,
-    help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
+    help="A text file with all of the folder names. An alternative to [IMAGE-FOLDERS]",
 )
 @click.pass_context
 def fasii_template(
@@ -648,6 +717,16 @@ def fasii_template(
     image_folders: list[str],
     image_folders_file: str | None,
 ):
+    """
+    Uses a iterative process to warp and `mask_warped_fasii.nrrd` images
+    created by `t6alh mask-register` into a final template. Creates the file
+    `template/fasii_template.nrrd`. Caches intermediate results, since this
+    command takes a long time to run
+
+
+    \b
+    t6alh template fasii-template 001 002 005
+    """
     ctx_dict = ctx.find_object(dict)
     assert ctx_dict is not None
     image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)
@@ -662,37 +741,14 @@ def fasii_template(
             sys.exit(1)
 
 
-@template.command(
-    help="""
-    uses a gui to select coordinates of the newly formed template
-"""
-)
-@click.pass_context
-def select_template_coordinates(
-    ctx: click.Context,
-):
-    ctx_dict = ctx.find_object(dict)
-    assert ctx_dict is not None
-    with Session(get_engine_with_context(ctx_dict)) as session:
-        try:
-            template_creation.write_landmarks(session)
-        except InvalidStepError as e:
-            click.echo(e)
-            sys.exit(1)
-
-
-@template.command(
-    help="""
-    for testing purposes, advance the image
-"""
-)
+@template.command()
 @click.argument("image-folders", type=str, nargs=-1)
 @click.option(
     "-f",
     "--image-folders-file",
     type=click.Path(exists=True, dir_okay=False),
     default=None,
-    help="A text file with all of the folder names. An alternitive to [IMAGE-FOLDERS]",
+    help="A text file with all of the folder names. An alternative to [IMAGE-FOLDERS]",
 )
 @click.pass_context
 def advance_images(
@@ -700,6 +756,9 @@ def advance_images(
     image_folders: list[str],
     image_folders_file: str | None,
 ):
+    """
+    advance the image for testing purposes
+    """
     ctx_dict = ctx.find_object(dict)
     assert ctx_dict is not None
     image_folders_or_none = image_folders_from_file(image_folders, image_folders_file)

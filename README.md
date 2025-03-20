@@ -1,8 +1,8 @@
-# Template 6 Alh
+# Template 6 ALH
 
 **WORK IN PROGRESS**
 
-A tool for aligning images of <i>Drosophila</i> brains from 6 hour old larvea
+A tool for aligning images of <i>Drosophila</i> brains from 6 hour old larvae
 
 ## Quick start
 Three commands are necessary to align to the template brain
@@ -52,5 +52,5 @@ conda activate template-env
 
 
 # Documentation
-Full documentation can be found at [pnewstein.github.io/t6alh-doc](https://pnewstein.github.io/t6alh-doc)
+Full documentation can be found at [pnewstein.github.io/t6alh-doc](https://pnewstein.github.io/t6alh-docs)
 

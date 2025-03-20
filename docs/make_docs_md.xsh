@@ -1,7 +1,7 @@
 import os
 import string
 env = os.environ.copy()
-env["COLUMNS"] = "50"
+env["COLUMNS"] = "60"
 from subprocess import run
 docs = $(cat docs-template.md)
 format_dict = {}
