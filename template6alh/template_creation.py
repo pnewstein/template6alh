@@ -157,84 +157,10 @@ def iterative_mask_template(
     nrrd.write(file=str(mask_path), data=template, header=template_md)
 
 
-def fasii_groupwise(session: Session, image_paths: list[str] | None):
-    """
-    does a groupwise warp to create a fasII tempalate
-    """
-    images = get_imgs(session, image_paths)
-    warpeds: list[Channel] = []
-    for image in images:
-        warped = (
-            session.execute(
-                select_most_recent("mask-register", image).filter(
-                    Channel.channel_type == "aligned",
-                )
-            )
-            .scalars()
-            .first()
-        )
-        if warped is None:
-            logger.warning("No results for image %s", image.folder)
-            continue
-        warpeds.append(warped)
-    if len(warpeds) == 0:
-        raise InvalidStepError("No images to process")
-    # preprocess image
-    prefix_dir = get_path(session, None)
-    run_with_logging(
-        [
-            get_cmtk_executable("groupwise_init"),
-            "-O",
-            prefix_dir / "groupwise/initial",
-            "-v",
-        ]
-        + [get_path(session, w) for w in warpeds]
-    )
-    run_with_logging(
-        (
-            "gunzip",
-            "-f",
-            prefix_dir / "groupwise/initial/groupwise.xforms.gz",
-        )
-    )
-    run_with_logging(
-        (
-            get_cmtk_executable("groupwise_warp"),
-            "--congeal",
-            "-O",
-            prefix_dir / "groupwise/warp",
-            "-v",
-            "--match-histograms",
-            "--histogram-bins",
-            "32",
-            "--grid-spacing",
-            "40",
-            "--grid-spacing-fit",
-            "--refine-grid",
-            "5",
-            "--zero-sum-no-affine",
-            "--downsample-from",
-            "8",
-            "--downsample-to",
-            "1",
-            "--exploration",
-            "6.4",
-            "--accuracy",
-            "0.1",
-            "--force-background",
-            "0",
-            "--output-average",
-            "template.nrrd",
-            prefix_dir / "groupwise/initial/groupwise.xforms",
-        )
-    )
-
-
 def fasii_template(session: Session, image_paths: list[str] | None):
     """
     does a groupwise warp to create a fasII tempalate
     """
-    api.mask_register(session, image_paths)
     images = get_imgs(session, image_paths)
     warpeds: list[Channel] = []
     for image in images:
@@ -277,22 +203,6 @@ def fasii_template(session: Session, image_paths: list[str] | None):
     template = template * (254 / template.max())
     template = template.astype(np.uint8)
     nrrd.write(file=str(template_path), data=template, header=template_md)
-
-
-def write_landmarks(session: Session):
-    """
-    opens a gui to write landmarks for the template path to disk
-    """
-    config_dict = ConfigDict(session)
-    in_path = Path(config_dict["mask_template_path"])
-    if not in_path.exists():
-        raise InvalidStepError("Missing template at %s", str(in_path))
-    out_path = in_path.with_suffix(".landmarks")
-    config_dict["mask_template_landmarks_path"] = str(out_path)
-    session.commit()
-    slicer = matplotlib_slice.write_landmarks(in_path, out_path)
-    click.confirm("Close all windows?")
-    slicer.quit()
 
 
 def advance_images(session: Session, image_paths: list[str] | None):
