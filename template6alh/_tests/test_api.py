@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 import shutil
 import logging
+import json
 
 import nrrd
 import numpy as np
@@ -63,6 +64,13 @@ def check_add_more_raw(session: Session, root_dir: Path):
     assert len(unique_raw_file_ids) == 2
     images = session.execute(select(sc.Image)).scalars().all()
     assert images
+
+
+def check_raw_data_info(session):
+    out = api.raw_data_info(session, "json")
+    assert json.loads(out) == {
+        "test": {"fasii": 1, "neuropil": 2, "images": ["003", "004"]}
+    }
 
 
 def check_segment_neuropil(session: Session, root_dir: Path):
@@ -221,6 +229,7 @@ def test_api():
         check_init(engine, root_dir)
         with Session(engine) as session:
             check_add_more_raw(session, root_dir)
+            check_raw_data_info(session)
             check_segment_neuropil(session, root_dir)
             check_clean(session, root_dir)
             check_select_most_recent(session)

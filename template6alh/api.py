@@ -5,8 +5,9 @@ there is a one to one correspondence between api functions and cli options
 """
 
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Sequence, Literal
 from datetime import datetime
+import json
 import logging
 
 from sqlalchemy.orm import Session, joinedload, aliased
@@ -635,3 +636,26 @@ def fasii_align(
                 )
             )
     session.commit()
+
+
+def raw_data_info(session: Session, output: Literal["json", "text"]) -> str:
+    raw_files = session.execute(select(RawFile)).scalars()
+    out_dict: dict[str, dict] = {}
+    for raw_file in raw_files:
+        md_dict = {
+            "fasii": raw_file.fasii_chan,
+            "neuropil": raw_file.neuropil_chan,
+            "images": [i.folder for i in raw_file.images],
+        }
+        out_dict[raw_file.path] = md_dict
+    if output == "json":
+        return json.dumps(out_dict, indent=2)
+    out_strings: list[str] = []
+    for raw_path, md_dict in out_dict.items():
+        out_strings.append(
+            f"{raw_path}:\n"
+            f"  fasii_chan = {md_dict["fasii"]}\n"
+            f"  neuropil_chan = {md_dict["neuropil"]}\n"
+            f"  images = {md_dict["images"]}\n"
+        )
+    return "\n\n".join(out_strings)

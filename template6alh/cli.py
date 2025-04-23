@@ -605,6 +605,32 @@ def select_neuropil_fasii(
             sys.exit(1)
 
 
+@main.command()
+@click.pass_context
+@click.option("-j", "--json", is_flag=True, help="output as json")
+@click.option("-t", "--text", is_flag=True, help="output as raw text. Default")
+def raw_data_info(ctx: click.Context, json: bool, text: bool):
+    """
+    prints information about the raw data files. Specificaly it prints the
+    fasii channel number, the neuropil channel number, and a list of all of the
+    image paths
+
+    \b
+    t6alh -d test.db raw-data-info --json
+    """
+    if json and text:
+        raise click.UsageError("Options json and text are mutually exclusive")
+    output = "json" if json else "text"
+    ctx_dict = ctx.find_object(dict)
+    assert ctx_dict is not None
+    with Session(get_engine_with_context(ctx_dict)) as session:
+        try:
+            click.echo(api.raw_data_info(session, output))
+        except InvalidStepError as e:
+            click.echo(e)
+            sys.exit(1)
+
+
 @main.group(help="Commands for creating a template image")
 @click.pass_context
 def template(ctx: click.Context):
