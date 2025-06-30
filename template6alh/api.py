@@ -18,7 +18,7 @@ from scipy import ndimage as ndi
 import numpy as np
 
 from .segment_neuropil import make_neuropil_mask, default_args_make_neuropil_mask
-from .read_raw_data import read_czi, read_test
+from .read_raw_data import read_czi, read_test, read_ome_tiff
 from .sql_classes import (
     Channel,
     ChannelMetadata,
@@ -118,6 +118,8 @@ def add_more_raw(
     for path in raw_data:
         if path.suffix == ".czi":
             reader = read_czi(path)
+        if tuple(path.suffixes) in [(".ome",".tiff"), (".ome",".tif")]:
+            reader = read_ome_tiff(path)
         elif path == Path("test"):
             reader = read_test(path)
         else:

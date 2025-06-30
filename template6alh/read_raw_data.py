@@ -7,10 +7,12 @@ each image is expected to be in CZYX form
 
 from pathlib import Path
 from typing import Generator, Any
+import xml.etree.ElementTree as ET
+
 from aicspylibczi import CziFile
 from skimage.data import binary_blobs
-
 import numpy as np
+import tifffile
 
 
 def read_test(path: Path) -> Generator[tuple[dict[str, Any], np.ndarray], None, None]:
@@ -57,3 +59,29 @@ def read_czi(path: Path) -> Generator[tuple[dict[str, Any], np.ndarray], None, N
         image, dims = czi.read_image(**image_spec)
         assert "".join(dim for dim, count in dims if count != 1) == "CZYX"
         yield spacings_dict, image.squeeze()
+
+
+def read_ome_tiff(
+    path: Path,
+) -> Generator[tuple[dict[str, Any], np.ndarray], None, None]:
+    """
+    reads a tiff files
+    generates metadata and 4d images CZYX
+    metadata is guaranteed to have keys "X", "Y", "Z"
+
+    """
+    tif = tifffile.TiffFile(path)
+    assert tif.ome_metadata is not None
+    mdata = ET.fromstring(tif.ome_metadata)
+    for image_mdata, series in zip(mdata, tif.series):
+        namespace = {"ome": next(iter(mdata.attrib.values())).split()[0]}
+        pixels = image_mdata.find("ome:Pixels", namespaces=namespace)
+        assert pixels is not None
+        pixel_md = pixels.attrib
+        # get xyz scale
+        spacings_dict = {
+            "Z": float(pixel_md["PhysicalSizeZ"]),
+            "Y": float(pixel_md["PhysicalSizeY"]),
+            "X": float(pixel_md["PhysicalSizeX"]),
+        }
+        yield spacings_dict, series.asarray()
