@@ -603,7 +603,7 @@ def fasii_align(
                 "--outlist",
                 get_path(session, warp_xform_chan),
                 "--grid-spacing",
-                "10",
+                "50",
                 "--fast",
                 "--exploration",
                 "26",

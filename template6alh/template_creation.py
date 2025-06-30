@@ -14,7 +14,7 @@ import nrrd
 import click
 
 from .sql_classes import Channel, Image, AnalysisStep, ChannelMetadata
-from .execptions import InvalidStepError
+from .execptions import InvalidStepError, CannotFindTemplate
 from .sql_utils import (
     perform_analysis_step,
     get_path,
@@ -195,11 +195,20 @@ def fasii_template(session: Session, image_paths: list[str] | None):
         prev_dir = do_iteration(
             input_images, prev_dir, template_create_dir / f"iter{i}", "warp", i
         )
+
     # postprocesses
-    template_path = get_fasii_template_path(session)
-    assert template_path.exists()
-    assert template_path.stat().st_size > 1
-    template, template_md = nrrd.read(str(template_path))
+    try:
+        template_path = get_fasii_template_path(session)
+    except CannotFindTemplate:
+        config_dict = ConfigDict(session)
+        template_path = Path(config_dict["prefix_dir"])/ "template/fasii_template.nrrd"
+        template_path.parent.mkdir(exist_ok=True)
+        config_dict["fasii_template_path"] = str(template_path)
+
+    template_output = prev_dir / "average.nrrd"
+    assert template_output.exists()
+    assert template_output.stat().st_size > 1
+    template, template_md = nrrd.read(str(template_output))
     template = template * (254 / template.max())
     template = template.astype(np.uint8)
     nrrd.write(file=str(template_path), data=template, header=template_md)

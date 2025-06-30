@@ -40,7 +40,7 @@ def do_iteration(
 ) -> Path:
     """
     does an iteration puting all warps and intermediate images and new templates
-    returns the path to the new template
+    returns the path to the directory containing the new template
     """
     new_dir.mkdir(exist_ok=True)
     new_template = new_dir / "average.nrrd"
